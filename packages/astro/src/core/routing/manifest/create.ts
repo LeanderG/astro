@@ -8,8 +8,8 @@ import type {
 } from '../../../@types/astro.js';
 import type { Logger } from '../../logger/core.js';
 
-import { createRequire } from 'module';
 import nodeFs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bold } from 'kleur/colors';
@@ -22,6 +22,7 @@ import { removeLeadingForwardSlash, slash } from '../../path.js';
 import { resolvePages } from '../../util.js';
 import { routeComparator } from '../priority.js';
 import { getRouteGenerator } from './generator.js';
+import { getPattern } from './pattern.js';
 const require = createRequire(import.meta.url);
 
 interface Item {
@@ -48,7 +49,7 @@ function countOccurrences(needle: string, haystack: string) {
 const ROUTE_DYNAMIC_SPLIT = /\[(.+?\(.+?\)|.+?)\]/;
 const ROUTE_SPREAD = /^\.{3}.+$/;
 
-function getParts(part: string, file: string) {
+export function getParts(part: string, file: string) {
 	const result: RoutePart[] = [];
 	part.split(ROUTE_DYNAMIC_SPLIT).map((str, i) => {
 		if (!str) return;
@@ -70,64 +71,10 @@ function getParts(part: string, file: string) {
 	return result;
 }
 
-function getPattern(
-	segments: RoutePart[][],
-	config: AstroConfig,
-	addTrailingSlash: AstroConfig['trailingSlash']
-) {
-	const base = config.base;
-	const pathname = segments
-		.map((segment) => {
-			if (segment.length === 1 && segment[0].spread) {
-				return '(?:\\/(.*?))?';
-			} else {
-				return (
-					'\\/' +
-					segment
-						.map((part) => {
-							if (part.spread) {
-								return '(.*?)';
-							} else if (part.dynamic) {
-								return '([^/]+?)';
-							} else {
-								return part.content
-									.normalize()
-									.replace(/\?/g, '%3F')
-									.replace(/#/g, '%23')
-									.replace(/%5B/g, '[')
-									.replace(/%5D/g, ']')
-									.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-							}
-						})
-						.join('')
-				);
-			}
-		})
-		.join('');
-
-	const trailing =
-		addTrailingSlash && segments.length ? getTrailingSlashPattern(addTrailingSlash) : '$';
-	let initial = '\\/';
-	if (addTrailingSlash === 'never' && base !== '/') {
-		initial = '';
-	}
-	return new RegExp(`^${pathname || initial}${trailing}`);
-}
-
-function getTrailingSlashPattern(addTrailingSlash: AstroConfig['trailingSlash']): string {
-	if (addTrailingSlash === 'always') {
-		return '\\/$';
-	}
-	if (addTrailingSlash === 'never') {
-		return '$';
-	}
-	return '\\/?$';
-}
-
-function validateSegment(segment: string, file = '') {
+export function validateSegment(segment: string, file = '') {
 	if (!file) file = segment;
 
-	if (/\]\[/.test(segment)) {
+	if (segment.includes('][')) {
 		throw new Error(`Invalid route ${file} \u2014 parameters must be separated`);
 	}
 	if (countOccurrences('[', segment) !== countOccurrences(']', segment)) {
@@ -186,7 +133,7 @@ export interface CreateRouteManifestParams {
 
 function createFileBasedRoutes(
 	{ settings, cwd, fsMod }: CreateRouteManifestParams,
-	logger: Logger
+	logger: Logger,
 ): RouteData[] {
 	const components: string[] = [];
 	const routes: RouteData[] = [];
@@ -203,7 +150,7 @@ function createFileBasedRoutes(
 		fs: typeof nodeFs,
 		dir: string,
 		parentSegments: RoutePart[][],
-		parentParams: string[]
+		parentParams: string[],
 	) {
 		let items: Item[] = [];
 		const files = fs.readdirSync(dir);
@@ -225,8 +172,8 @@ function createFileBasedRoutes(
 				logger.warn(
 					null,
 					`Unsupported file type ${bold(
-						resolved
-					)} found. Prefix filename with an underscore (\`_\`) to ignore.`
+						resolved,
+					)} found. Prefix filename with an underscore (\`_\`) to ignore.`,
 				);
 
 				continue;
@@ -292,7 +239,7 @@ function createFileBasedRoutes(
 				components.push(item.file);
 				const component = item.file;
 				const { trailingSlash } = settings.config;
-				const pattern = getPattern(segments, settings.config, trailingSlash);
+				const pattern = getPattern(segments, settings.config.base, trailingSlash);
 				const generate = getRouteGenerator(segments, trailingSlash);
 				const pathname = segments.every((segment) => segment.length === 1 && !segment[0].dynamic)
 					? `/${segments.map((segment) => segment[0].content).join('/')}`
@@ -346,7 +293,7 @@ function createInjectedRoutes({ settings, cwd }: CreateRouteManifestParams): Pri
 		let resolved: string;
 		try {
 			resolved = require.resolve(entrypoint, { paths: [cwd || fileURLToPath(config.root)] });
-		} catch (e) {
+		} catch {
 			resolved = fileURLToPath(new URL(entrypoint, config.root));
 		}
 		const component = slash(path.relative(cwd || fileURLToPath(config.root), resolved));
@@ -363,7 +310,7 @@ function createInjectedRoutes({ settings, cwd }: CreateRouteManifestParams): Pri
 		const isPage = type === 'page';
 		const trailingSlash = isPage ? config.trailingSlash : 'never';
 
-		const pattern = getPattern(segments, settings.config, trailingSlash);
+		const pattern = getPattern(segments, settings.config.base, trailingSlash);
 		const generate = getRouteGenerator(segments, trailingSlash);
 		const pathname = segments.every((segment) => segment.length === 1 && !segment[0].dynamic)
 			? `/${segments.map((segment) => segment[0].content).join('/')}`
@@ -399,7 +346,7 @@ function createInjectedRoutes({ settings, cwd }: CreateRouteManifestParams): Pri
 function createRedirectRoutes(
 	{ settings }: CreateRouteManifestParams,
 	routeMap: Map<string, RouteData>,
-	logger: Logger
+	logger: Logger,
 ): PrioritizedRoutesData {
 	const { config } = settings;
 	const trailingSlash = config.trailingSlash;
@@ -419,7 +366,7 @@ function createRedirectRoutes(
 				return getParts(s, from);
 			});
 
-		const pattern = getPattern(segments, settings.config, trailingSlash);
+		const pattern = getPattern(segments, settings.config.base, trailingSlash);
 		const generate = getRouteGenerator(segments, trailingSlash);
 		const pathname = segments.every((segment) => segment.length === 1 && !segment[0].dynamic)
 			? `/${segments.map((segment) => segment[0].content).join('/')}`
@@ -440,7 +387,7 @@ function createRedirectRoutes(
 		if (/^https?:\/\//.test(destination)) {
 			logger.warn(
 				'redirects',
-				`Redirecting to an external URL is not officially supported: ${from} -> ${destination}`
+				`Redirecting to an external URL is not officially supported: ${from} -> ${destination}`,
 			);
 		}
 
@@ -487,7 +434,7 @@ function isStaticSegment(segment: RoutePart[]) {
  *   For example, `/foo/[bar]` and `/foo/[baz]` or `/foo/[...bar]` and `/foo/[...baz]`
  *     but not `/foo/[bar]` and `/foo/[...baz]`.
  */
-function detectRouteCollision(a: RouteData, b: RouteData, config: AstroConfig, logger: Logger) {
+function detectRouteCollision(a: RouteData, b: RouteData, _config: AstroConfig, logger: Logger) {
 	if (a.type === 'fallback' || b.type === 'fallback') {
 		// If either route is a fallback route, they don't collide.
 		// Fallbacks are always added below other routes exactly to avoid collisions.
@@ -503,11 +450,11 @@ function detectRouteCollision(a: RouteData, b: RouteData, config: AstroConfig, l
 		// such that one of them will never be matched.
 		logger.warn(
 			'router',
-			`The route "${a.route}" is defined in both "${a.component}" and "${b.component}". A static route cannot be defined more than once.`
+			`The route "${a.route}" is defined in both "${a.component}" and "${b.component}". A static route cannot be defined more than once.`,
 		);
 		logger.warn(
 			'router',
-			'A collision will result in an hard error in following versions of Astro.'
+			'A collision will result in an hard error in following versions of Astro.',
 		);
 		return;
 	}
@@ -541,7 +488,7 @@ function detectRouteCollision(a: RouteData, b: RouteData, config: AstroConfig, l
 	// Both routes are guaranteed to collide such that one will never be matched.
 	logger.warn(
 		'router',
-		`The route "${a.route}" is defined in both "${a.component}" and "${b.component}" using SSR mode. A dynamic SSR route cannot be defined more than once.`
+		`The route "${a.route}" is defined in both "${a.component}" and "${b.component}" using SSR mode. A dynamic SSR route cannot be defined more than once.`,
 	);
 	logger.warn('router', 'A collision will result in an hard error in following versions of Astro.');
 }
@@ -549,7 +496,7 @@ function detectRouteCollision(a: RouteData, b: RouteData, config: AstroConfig, l
 /** Create manifest of all static routes */
 export function createRouteManifest(
 	params: CreateRouteManifestParams,
-	logger: Logger
+	logger: Logger,
 ): ManifestData {
 	const { settings } = params;
 	const { config } = settings;
@@ -573,7 +520,7 @@ export function createRouteManifest(
 	const routes: RouteData[] = [
 		...injectedRoutes['legacy'].sort(routeComparator),
 		...[...fileBasedRoutes, ...injectedRoutes['normal'], ...redirectRoutes['normal']].sort(
-			routeComparator
+			routeComparator,
 		),
 		...redirectRoutes['legacy'].sort(routeComparator),
 	];
@@ -596,7 +543,7 @@ export function createRouteManifest(
 			if (!index) {
 				let relativePath = path.relative(
 					fileURLToPath(settings.config.root),
-					fileURLToPath(new URL('pages', settings.config.srcDir))
+					fileURLToPath(new URL('pages', settings.config.srcDir)),
 				);
 				throw new AstroError({
 					...MissingIndexForInternationalization,
@@ -687,7 +634,7 @@ export function createRouteManifest(
 						pathname,
 						route,
 						segments,
-						pattern: getPattern(segments, config, config.trailingSlash),
+						pattern: getPattern(segments, config.base, config.trailingSlash),
 						type: 'fallback',
 					});
 				}
@@ -764,7 +711,7 @@ export function createRouteManifest(
 									route,
 									segments,
 									generate,
-									pattern: getPattern(segments, config, config.trailingSlash),
+									pattern: getPattern(segments, config.base, config.trailingSlash),
 									type: 'fallback',
 									fallbackRoutes: [],
 								};

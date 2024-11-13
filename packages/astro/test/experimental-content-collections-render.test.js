@@ -74,7 +74,7 @@ if (!isWindows) {
 				assert.notEqual(
 					[...allScripts].find((script) => $(script).attr('src')?.includes('/_astro/WithScripts')),
 					undefined,
-					'hoisted script missing from head.'
+					'hoisted script missing from head.',
 				);
 
 				// Includes inline script
@@ -90,10 +90,10 @@ if (!isWindows) {
 				// Excludes hoisted script
 				assert.notEqual(
 					[...allScripts].find((script) =>
-						$(script).text().includes('document.querySelector("#update-me")')
+						$(script).text().includes('document.querySelector("#update-me")'),
 					),
 					'`WithScripts.astro` hoisted script included unexpectedly.',
-					undefined
+					undefined,
 				);
 			});
 
@@ -120,6 +120,38 @@ if (!isWindows) {
 
 					// Includes styles
 					assert.equal($('link[rel=stylesheet]').length, 1);
+				});
+
+				it('content folder is cleaned', async () => {
+					let found = true;
+					try {
+						await fixture.readFile('content/manifest.json');
+					} catch {
+						found = false;
+					}
+					assert.equal(found, false, 'manifest not in dist folder');
+				});
+
+				it('chunks folder is cleaned', async () => {
+					const files = await fixture.readdir('');
+					assert.equal(files.includes('chunks'), false, 'chunks folder removed');
+				});
+
+				it('hoisted script is built', async () => {
+					const html = await fixture.readFile('/launch-week-component-scripts/index.html');
+					const $ = cheerio.load(html);
+
+					const allScripts = $('head > script[type="module"]');
+					assert.ok(allScripts.length > 0);
+
+					// Includes hoisted script
+					assert.notEqual(
+						[...allScripts].find((script) =>
+							$(script).attr('src')?.includes('/_astro/WithScripts'),
+						),
+						undefined,
+						'hoisted script missing from head.',
+					);
 				});
 			});
 		});

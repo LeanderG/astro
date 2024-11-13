@@ -1,12 +1,15 @@
-import fs from 'node:fs';
+import fs, { existsSync } from 'node:fs';
 import type http from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { performance } from 'node:perf_hooks';
 import { green } from 'kleur/colors';
-import { performance } from 'perf_hooks';
 import { gt, major, minor, patch } from 'semver';
 import type * as vite from 'vite';
 import type { AstroInlineConfig } from '../../@types/astro.js';
+import { getDataStoreFile, globalContentLayer } from '../../content/content-layer.js';
 import { attachContentServerListeners } from '../../content/index.js';
+import { MutableDataStore } from '../../content/mutable-data-store.js';
+import { globalContentConfigObserver } from '../../content/utils.js';
 import { telemetry } from '../../events/index.js';
 import * as msg from '../messages.js';
 import { ensureProcessNodeEnv } from '../util.js';
@@ -46,35 +49,37 @@ export default async function dev(inlineConfig: AstroInlineConfig): Promise<DevS
 	if (!isPrerelease) {
 		try {
 			// Don't await this, we don't want to block the dev server from starting
-			shouldCheckForUpdates(restart.container.settings.preferences).then(async (shouldCheck) => {
-				if (shouldCheck) {
-					const version = await fetchLatestAstroVersion(restart.container.settings.preferences);
+			shouldCheckForUpdates(restart.container.settings.preferences)
+				.then(async (shouldCheck) => {
+					if (shouldCheck) {
+						const version = await fetchLatestAstroVersion(restart.container.settings.preferences);
 
-					if (gt(version, currentVersion)) {
-						// Only update the latestAstroVersion if the latest version is greater than the current version, that way we don't need to check that again
-						// whenever we check for the latest version elsewhere
-						restart.container.settings.latestAstroVersion = version;
+						if (gt(version, currentVersion)) {
+							// Only update the latestAstroVersion if the latest version is greater than the current version, that way we don't need to check that again
+							// whenever we check for the latest version elsewhere
+							restart.container.settings.latestAstroVersion = version;
 
-						const sameMajor = major(version) === major(currentVersion);
-						const sameMinor = minor(version) === minor(currentVersion);
-						const patchDistance = patch(version) - patch(currentVersion);
+							const sameMajor = major(version) === major(currentVersion);
+							const sameMinor = minor(version) === minor(currentVersion);
+							const patchDistance = patch(version) - patch(currentVersion);
 
-						if (sameMajor && sameMinor && patchDistance < MAX_PATCH_DISTANCE) {
-							// Don't bother the user with a log if they're only a few patch versions behind
-							// We can still tell them in the dev toolbar, which has a more opt-in nature
-							return;
+							if (sameMajor && sameMinor && patchDistance < MAX_PATCH_DISTANCE) {
+								// Don't bother the user with a log if they're only a few patch versions behind
+								// We can still tell them in the dev toolbar, which has a more opt-in nature
+								return;
+							}
+
+							logger.warn(
+								'SKIP_FORMAT',
+								await msg.newVersionAvailable({
+									latestVersion: version,
+								}),
+							);
 						}
-
-						logger.warn(
-							'SKIP_FORMAT',
-							await msg.newVersionAvailable({
-								latestVersion: version,
-							})
-						);
 					}
-				}
-			});
-		} catch (e) {
+				})
+				.catch(() => {});
+		} catch {
 			// Just ignore the error, we don't want to block the dev server from starting and this is just a nice-to-have feature
 		}
 	}
@@ -88,7 +93,7 @@ export default async function dev(inlineConfig: AstroInlineConfig): Promise<DevS
 			resolvedUrls: restart.container.viteServer.resolvedUrls || { local: [], network: [] },
 			host: restart.container.settings.config.server.host,
 			base: restart.container.settings.config.base,
-		})
+		}),
 	);
 
 	if (isPrerelease) {
@@ -99,6 +104,34 @@ export default async function dev(inlineConfig: AstroInlineConfig): Promise<DevS
 	}
 
 	await attachContentServerListeners(restart.container);
+
+	let store: MutableDataStore | undefined;
+	try {
+		const dataStoreFile = getDataStoreFile(restart.container.settings);
+		if (existsSync(dataStoreFile)) {
+			store = await MutableDataStore.fromFile(dataStoreFile);
+		}
+	} catch (err: any) {
+		logger.error('content', err.message);
+	}
+	if (!store) {
+		store = new MutableDataStore();
+	}
+
+	const config = globalContentConfigObserver.get();
+	if (config.status === 'error') {
+		logger.error('content', config.error.message);
+	}
+	if (config.status === 'loaded') {
+		const contentLayer = globalContentLayer.init({
+			settings: restart.container.settings,
+			logger,
+			watcher: restart.container.viteServer.watcher,
+			store,
+		});
+		contentLayer.watchContentConfig();
+		await contentLayer.sync();
+	}
 
 	logger.info(null, green('watching for file changes...'));
 

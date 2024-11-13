@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import type { AstroIntegration } from 'astro';
+import type { AstroIntegration, ContainerRenderer } from 'astro';
 
 function getViteConfiguration() {
 	return {
@@ -19,6 +19,13 @@ function getViteConfiguration() {
 	};
 }
 
+export function getContainerRenderer(): ContainerRenderer {
+	return {
+		name: '@astrojs/lit',
+		serverEntrypoint: '@astrojs/lit/server.js',
+	};
+}
+
 export default function (): AstroIntegration {
 	return {
 		name: '@astrojs/lit',
@@ -27,7 +34,7 @@ export default function (): AstroIntegration {
 				// Inject the necessary polyfills on every page (inlined for speed).
 				injectScript(
 					'head-inline',
-					readFileSync(new URL('../client-shim.min.js', import.meta.url), { encoding: 'utf-8' })
+					readFileSync(new URL('../client-shim.min.js', import.meta.url), { encoding: 'utf-8' }),
 				);
 				// Inject the hydration code, before a component is hydrated.
 				injectScript('before-hydration', `import '@astrojs/lit/hydration-support.js';`);

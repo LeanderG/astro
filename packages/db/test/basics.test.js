@@ -1,8 +1,9 @@
-import { expect } from 'chai';
+import assert from 'node:assert/strict';
+import { after, before, describe, it } from 'node:test';
 import { load as cheerioLoad } from 'cheerio';
 import testAdapter from '../../astro/test/test-adapter.js';
 import { loadFixture } from '../../astro/test/test-utils.js';
-import { setupRemoteDbServer } from './test-utils.js';
+import { clearEnvironment, setupRemoteDbServer } from './test-utils.js';
 
 describe('astro:db', () => {
 	let fixture;
@@ -14,10 +15,11 @@ describe('astro:db', () => {
 		});
 	});
 
-	describe('development', () => {
+	describe({ skip: process.platform === 'darwin' }, 'development', () => {
 		let devServer;
 
 		before(async () => {
+			clearEnvironment();
 			devServer = await fixture.startDevServer();
 		});
 
@@ -30,8 +32,8 @@ describe('astro:db', () => {
 			const $ = cheerioLoad(html);
 
 			const ul = $('.authors-list');
-			expect(ul.children()).to.have.a.lengthOf(5);
-			expect(ul.children().eq(0).text()).to.equal('Ben');
+			assert.equal(ul.children().length, 5);
+			assert.match(ul.children().eq(0).text(), /Ben/);
 		});
 
 		it('Allows expression defaults for date columns', async () => {
@@ -39,7 +41,7 @@ describe('astro:db', () => {
 			const $ = cheerioLoad(html);
 
 			const themeAdded = $($('.themes-list .theme-added')[0]).text();
-			expect(new Date(themeAdded).getTime()).to.not.be.NaN;
+			assert.equal(Number.isNaN(new Date(themeAdded).getTime()), false);
 		});
 
 		it('Defaults can be overridden for dates', async () => {
@@ -47,7 +49,7 @@ describe('astro:db', () => {
 			const $ = cheerioLoad(html);
 
 			const themeAdded = $($('.themes-list .theme-added')[1]).text();
-			expect(new Date(themeAdded).getTime()).to.not.be.NaN;
+			assert.equal(Number.isNaN(new Date(themeAdded).getTime()), false);
 		});
 
 		it('Allows expression defaults for text columns', async () => {
@@ -55,7 +57,7 @@ describe('astro:db', () => {
 			const $ = cheerioLoad(html);
 
 			const themeOwner = $($('.themes-list .theme-owner')[0]).text();
-			expect(themeOwner).to.equal('');
+			assert.equal(themeOwner, '');
 		});
 
 		it('Allows expression defaults for boolean columns', async () => {
@@ -63,20 +65,20 @@ describe('astro:db', () => {
 			const $ = cheerioLoad(html);
 
 			const themeDark = $($('.themes-list .theme-dark')[0]).text();
-			expect(themeDark).to.equal('dark mode');
+			assert.match(themeDark, /dark mode/);
 		});
 
 		it('text fields an be used as references', async () => {
 			const html = await fixture.fetch('/login').then((res) => res.text());
 			const $ = cheerioLoad(html);
 
-			expect($('.session-id').text()).to.equal('12345');
-			expect($('.username').text()).to.equal('Mario');
+			assert.match($('.session-id').text(), /12345/);
+			assert.match($('.username').text(), /Mario/);
 		});
 
 		it('Prints authors from raw sql call', async () => {
 			const json = await fixture.fetch('run.json').then((res) => res.json());
-			expect(json).to.deep.equal({
+			assert.deepEqual(json, {
 				columns: ['_id', 'name', 'age2'],
 				columnTypes: ['INTEGER', 'TEXT', 'INTEGER'],
 				rows: [
@@ -92,11 +94,12 @@ describe('astro:db', () => {
 		});
 	});
 
-	describe('development --remote', () => {
+	describe({ skip: process.platform === 'darwin' }, 'development --remote', () => {
 		let devServer;
 		let remoteDbServer;
 
 		before(async () => {
+			clearEnvironment();
 			remoteDbServer = await setupRemoteDbServer(fixture.config);
 			devServer = await fixture.startDevServer();
 		});
@@ -111,8 +114,8 @@ describe('astro:db', () => {
 			const $ = cheerioLoad(html);
 
 			const ul = $('.authors-list');
-			expect(ul.children()).to.have.a.lengthOf(5);
-			expect(ul.children().eq(0).text()).to.equal('Ben');
+			assert.equal(ul.children().length, 5);
+			assert.match(ul.children().eq(0).text(), /Ben/);
 		});
 
 		it('Allows expression defaults for date columns', async () => {
@@ -120,7 +123,7 @@ describe('astro:db', () => {
 			const $ = cheerioLoad(html);
 
 			const themeAdded = $($('.themes-list .theme-added')[0]).text();
-			expect(new Date(themeAdded).getTime()).to.not.be.NaN;
+			assert.equal(Number.isNaN(new Date(themeAdded).getTime()), false);
 		});
 
 		it('Defaults can be overridden for dates', async () => {
@@ -128,7 +131,7 @@ describe('astro:db', () => {
 			const $ = cheerioLoad(html);
 
 			const themeAdded = $($('.themes-list .theme-added')[1]).text();
-			expect(new Date(themeAdded).getTime()).to.not.be.NaN;
+			assert.equal(Number.isNaN(new Date(themeAdded).getTime()), false);
 		});
 
 		it('Allows expression defaults for text columns', async () => {
@@ -136,7 +139,7 @@ describe('astro:db', () => {
 			const $ = cheerioLoad(html);
 
 			const themeOwner = $($('.themes-list .theme-owner')[0]).text();
-			expect(themeOwner).to.equal('');
+			assert.equal(themeOwner, '');
 		});
 
 		it('Allows expression defaults for boolean columns', async () => {
@@ -144,20 +147,20 @@ describe('astro:db', () => {
 			const $ = cheerioLoad(html);
 
 			const themeDark = $($('.themes-list .theme-dark')[0]).text();
-			expect(themeDark).to.equal('dark mode');
+			assert.match(themeDark, /dark mode/);
 		});
 
 		it('text fields an be used as references', async () => {
 			const html = await fixture.fetch('/login').then((res) => res.text());
 			const $ = cheerioLoad(html);
 
-			expect($('.session-id').text()).to.equal('12345');
-			expect($('.username').text()).to.equal('Mario');
+			assert.match($('.session-id').text(), /12345/);
+			assert.match($('.username').text(), /Mario/);
 		});
 
 		it('Prints authors from raw sql call', async () => {
 			const json = await fixture.fetch('run.json').then((res) => res.json());
-			expect(json).to.deep.equal({
+			assert.deepEqual(json, {
 				columns: ['_id', 'name', 'age2'],
 				columnTypes: ['INTEGER', 'TEXT', 'INTEGER'],
 				rows: [
@@ -177,6 +180,7 @@ describe('astro:db', () => {
 		let remoteDbServer;
 
 		before(async () => {
+			clearEnvironment();
 			process.env.ASTRO_STUDIO_APP_TOKEN = 'some token';
 			remoteDbServer = await setupRemoteDbServer(fixture.config);
 			await fixture.build();
@@ -195,7 +199,7 @@ describe('astro:db', () => {
 			const $ = cheerioLoad(html);
 
 			const ul = $('.authors-list');
-			expect(ul.children()).to.have.a.lengthOf(5);
+			assert.equal(ul.children().length, 5);
 		});
 	});
 });

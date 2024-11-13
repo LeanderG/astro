@@ -1,4 +1,5 @@
-import { AstroError } from '../core/errors/errors.js';
+import type { NamedSSRLoadedRendererValue } from '../@types/astro.js';
+import { AstroError, AstroUserError } from '../core/errors/errors.js';
 import { AstroJSX, jsx } from '../jsx-runtime/index.js';
 import { renderJSX } from '../runtime/server/jsx.js';
 
@@ -9,7 +10,7 @@ const slotName = (str: string) => str.trim().replace(/[-_]([a-z])/g, (_, w) => w
 export async function check(
 	Component: any,
 	props: any,
-	{ default: children = null, ...slotted } = {}
+	{ default: children = null, ...slotted } = {},
 ) {
 	if (typeof Component !== 'function') return false;
 	const slots: Record<string, any> = {};
@@ -30,7 +31,7 @@ export async function renderToStaticMarkup(
 	this: any,
 	Component: any,
 	props = {},
-	{ default: children = null, ...slotted } = {}
+	{ default: children = null, ...slotted } = {},
 ) {
 	const slots: Record<string, any> = {};
 	for (const [key, value] of Object.entries(slotted)) {
@@ -52,6 +53,8 @@ function throwEnhancedErrorIfMdxComponent(error: Error, Component: any) {
 	// if the exception is from an mdx component
 	// throw an error
 	if (Component[Symbol.for('mdx-component')]) {
+		// if it's an AstroUserError, we don't need to re-throw, keep the original hint
+		if (AstroUserError.is(error)) return;
 		throw new AstroError({
 			message: error.message,
 			title: error.name,
@@ -62,7 +65,10 @@ function throwEnhancedErrorIfMdxComponent(error: Error, Component: any) {
 	}
 }
 
-export default {
+const renderer: NamedSSRLoadedRendererValue = {
+	name: 'astro:jsx',
 	check,
 	renderToStaticMarkup,
 };
+
+export default renderer;

@@ -8,7 +8,7 @@ import type {
 } from '../@types/astro.js';
 import { shouldAppendForwardSlash } from '../core/build/util.js';
 import { REROUTE_DIRECTIVE_HEADER } from '../core/constants.js';
-import { MissingLocale } from '../core/errors/errors-data.js';
+import { MissingLocale, i18nNoLocaleFoundInPath } from '../core/errors/errors-data.js';
 import { AstroError } from '../core/errors/index.js';
 import { createI18nMiddleware } from './middleware.js';
 import type { RoutingStrategies } from './utils.js';
@@ -17,6 +17,12 @@ export function requestHasLocale(locales: Locales) {
 	return function (context: APIContext): boolean {
 		return pathHasLocale(context.url.pathname, locales);
 	};
+}
+
+export function requestIs404Or500(request: Request, base = '') {
+	const url = new URL(request.url);
+
+	return url.pathname.startsWith(`${base}/404`) || url.pathname.startsWith(`${base}/500`);
 }
 
 // Checks if the pathname has any locale
@@ -65,6 +71,7 @@ type GetLocaleAbsoluteUrl = GetLocaleRelativeUrl & {
 	site: AstroConfig['site'];
 	isBuild: boolean;
 };
+
 /**
  * The base URL
  */
@@ -185,11 +192,11 @@ export function getPathByLocale(locale: string, locales: Locales): string {
 			}
 		}
 	}
-	throw new Unreachable();
+	throw new AstroError(i18nNoLocaleFoundInPath);
 }
 
 /**
- * An utility function that retrieves the preferred locale that correspond to a path.
+ * A utility function that retrieves the preferred locale that correspond to a path.
  *
  * @param path
  * @param locales
@@ -200,14 +207,14 @@ export function getLocaleByPath(path: string, locales: Locales): string {
 			if (locale.path === path) {
 				// the first code is the one that user usually wants
 				const code = locale.codes.at(0);
-				if (code === undefined) throw new Unreachable();
+				if (code === undefined) throw new AstroError(i18nNoLocaleFoundInPath);
 				return code;
 			}
 		} else if (locale === path) {
 			return locale;
 		}
 	}
-	throw new Unreachable();
+	throw new AstroError(i18nNoLocaleFoundInPath);
 }
 
 /**
@@ -266,17 +273,6 @@ function peekCodePathToUse(locales: Locales, locale: string): undefined | string
 	return undefined;
 }
 
-class Unreachable extends Error {
-	constructor() {
-		super(
-			'Astro encountered an unexpected line of code.\n' +
-				'In most cases, this is not your fault, but a bug in astro code.\n' +
-				"If there isn't one already, please create an issue.\n" +
-				'https://astro.build/issues'
-		);
-	}
-}
-
 export type MiddlewarePayload = {
 	base: string;
 	locales: Locales;
@@ -286,6 +282,7 @@ export type MiddlewarePayload = {
 	defaultLocale: string;
 	domains: Record<string, string> | undefined;
 	fallback: Record<string, string> | undefined;
+	fallbackType: 'redirect' | 'rewrite';
 };
 
 // NOTE: public function exported to the users via `astro:i18n` module
@@ -317,7 +314,7 @@ export function notFound({ base, locales }: MiddlewarePayload) {
 		if (!(isRoot || pathHasLocale(url.pathname, locales))) {
 			if (response) {
 				response.headers.set(REROUTE_DIRECTIVE_HEADER, 'no');
-				return new Response(null, {
+				return new Response(response.body, {
 					status: 404,
 					headers: response.headers,
 				});
@@ -336,7 +333,7 @@ export function notFound({ base, locales }: MiddlewarePayload) {
 }
 
 // NOTE: public function exported to the users via `astro:i18n` module
-export type RedirectToFallback = (context: APIContext, response: Response) => Response;
+export type RedirectToFallback = (context: APIContext, response: Response) => Promise<Response>;
 
 export function redirectToFallback({
 	fallback,
@@ -344,8 +341,9 @@ export function redirectToFallback({
 	defaultLocale,
 	strategy,
 	base,
+	fallbackType,
 }: MiddlewarePayload) {
-	return function (context: APIContext, response: Response): Response {
+	return async function (context: APIContext, response: Response): Promise<Response> {
 		if (response.status >= 300 && fallback) {
 			const fallbackKeys = fallback ? Object.keys(fallback) : [];
 			// we split the URL using the `/`, and then check in the returned array we have the locale
@@ -379,7 +377,12 @@ export function redirectToFallback({
 				} else {
 					newPathname = context.url.pathname.replace(`/${urlLocale}`, `/${pathFallbackLocale}`);
 				}
-				return context.redirect(newPathname);
+
+				if (fallbackType === 'rewrite') {
+					return await context.rewrite(newPathname);
+				} else {
+					return context.redirect(newPathname);
+				}
 			}
 		}
 		return response;
@@ -391,7 +394,7 @@ export function createMiddleware(
 	i18nManifest: SSRManifest['i18n'],
 	base: SSRManifest['base'],
 	trailingSlash: SSRManifest['trailingSlash'],
-	format: SSRManifest['buildFormat']
+	format: SSRManifest['buildFormat'],
 ) {
 	return createI18nMiddleware(i18nManifest, base, trailingSlash, format);
 }

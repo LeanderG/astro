@@ -35,6 +35,8 @@ export type SitemapOptions =
 
 			// called for each sitemap item just before to save them on disk, sync or async
 			serialize?(item: SitemapItem): SitemapItem | Promise<SitemapItem | undefined> | undefined;
+
+			xslURL?: string;
 	  }
 	| undefined;
 
@@ -47,14 +49,23 @@ const PKG_NAME = '@astrojs/sitemap';
 const OUTFILE = 'sitemap-index.xml';
 const STATUS_CODE_PAGES = new Set(['404', '500']);
 
-function isStatusCodePage(pathname: string): boolean {
-	if (pathname.endsWith('/')) {
-		pathname = pathname.slice(0, -1);
-	}
-	const end = pathname.split('/').pop() ?? '';
-	return STATUS_CODE_PAGES.has(end);
-}
+const isStatusCodePage = (locales: string[]) => {
+	const statusPathNames = new Set(
+		locales
+			.flatMap((locale) => [...STATUS_CODE_PAGES].map((page) => `${locale}/${page}`))
+			.concat([...STATUS_CODE_PAGES]),
+	);
 
+	return (pathname: string): boolean => {
+		if (pathname.endsWith('/')) {
+			pathname = pathname.slice(0, -1);
+		}
+		if (pathname.startsWith('/')) {
+			pathname = pathname.slice(1);
+		}
+		return statusPathNames.has(pathname);
+	};
+};
 const createPlugin = (options?: SitemapOptions): AstroIntegration => {
 	let config: AstroConfig;
 
@@ -70,7 +81,7 @@ const createPlugin = (options?: SitemapOptions): AstroIntegration => {
 				try {
 					if (!config.site) {
 						logger.warn(
-							'The Sitemap integration requires the `site` astro.config option. Skipping.'
+							'The Sitemap integration requires the `site` astro.config option. Skipping.',
 						);
 						return;
 					}
@@ -79,18 +90,10 @@ const createPlugin = (options?: SitemapOptions): AstroIntegration => {
 
 					const { filter, customPages, serialize, entryLimit } = opts;
 
-					let finalSiteUrl: URL;
-					if (config.site) {
-						finalSiteUrl = new URL(config.base, config.site);
-					} else {
-						console.warn(
-							'The Sitemap integration requires the `site` astro.config option. Skipping.'
-						);
-						return;
-					}
-
+					const finalSiteUrl = new URL(config.base, config.site);
+					const shouldIgnoreStatus = isStatusCodePage(Object.keys(opts.i18n?.locales ?? {}));
 					let pageUrls = pages
-						.filter((p) => !isStatusCodePage(p.pathname))
+						.filter((p) => !shouldIgnoreStatus(p.pathname))
 						.map((p) => {
 							if (p.pathname !== '' && !finalSiteUrl.pathname.endsWith('/'))
 								finalSiteUrl.pathname += '/';
@@ -99,7 +102,7 @@ const createPlugin = (options?: SitemapOptions): AstroIntegration => {
 							return new URL(fullPath, finalSiteUrl).href;
 						});
 
-					let routeUrls = routes.reduce<string[]>((urls, r) => {
+					const routeUrls = routes.reduce<string[]>((urls, r) => {
 						// Only expose pages, not endpoints or redirects
 						if (r.type !== 'page') return urls;
 
@@ -107,7 +110,7 @@ const createPlugin = (options?: SitemapOptions): AstroIntegration => {
 						 * Dynamic URLs have entries with `undefined` pathnames
 						 */
 						if (r.pathname) {
-							if (isStatusCodePage(r.pathname ?? r.route)) return urls;
+							if (shouldIgnoreStatus(r.pathname ?? r.route)) return urls;
 
 							// `finalSiteUrl` may end with a trailing slash
 							// or not because of base paths.
@@ -115,7 +118,7 @@ const createPlugin = (options?: SitemapOptions): AstroIntegration => {
 							if (fullPath.endsWith('/')) fullPath += r.generate(r.pathname).substring(1);
 							else fullPath += r.generate(r.pathname);
 
-							let newUrl = new URL(fullPath, finalSiteUrl).href;
+							const newUrl = new URL(fullPath, finalSiteUrl).href;
 
 							if (config.trailingSlash === 'never') {
 								urls.push(newUrl);
@@ -167,6 +170,7 @@ const createPlugin = (options?: SitemapOptions): AstroIntegration => {
 						}
 					}
 					const destDir = fileURLToPath(dir);
+					const xslURL = opts.xslURL ? new URL(opts.xslURL, finalSiteUrl).href : undefined;
 					await writeSitemap(
 						{
 							hostname: finalSiteUrl.href,
@@ -174,8 +178,9 @@ const createPlugin = (options?: SitemapOptions): AstroIntegration => {
 							publicBasePath: config.base,
 							sourceData: urlData,
 							limit: entryLimit,
+							xslURL: xslURL,
 						},
-						config
+						config,
 					);
 					logger.info(`\`${OUTFILE}\` created at \`${path.relative(process.cwd(), destDir)}\``);
 				} catch (err) {

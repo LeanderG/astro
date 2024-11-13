@@ -12,6 +12,7 @@ import type { OutgoingHttpHeaders } from 'node:http';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
+import { EnvSchema } from '../../env/schema.js';
 import { appendForwardSlash, prependForwardSlash, removeTrailingForwardSlash } from '../path.js';
 
 // The below types are required boilerplate to workaround a Zod issue since v3.21.2. Since that version,
@@ -33,8 +34,9 @@ import { appendForwardSlash, prependForwardSlash, removeTrailingForwardSlash } f
 // Also, make sure to not index the complexified type, as it would return a simplified value type, which goes
 // back to the issue again. The complexified type should be the base representation that we want to expose.
 
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 interface ComplexifyUnionObj {}
+
 type ComplexifyWithUnion<T> = T & ComplexifyUnionObj;
 type ComplexifyWithOmit<T> = Omit<T, '__nonExistent'>;
 
@@ -45,7 +47,7 @@ type RehypePlugin = ComplexifyWithUnion<_RehypePlugin>;
 type RemarkPlugin = ComplexifyWithUnion<_RemarkPlugin>;
 type RemarkRehype = ComplexifyWithOmit<_RemarkRehype>;
 
-const ASTRO_CONFIG_DEFAULTS = {
+export const ASTRO_CONFIG_DEFAULTS = {
 	root: '.',
 	srcDir: './src',
 	publicDir: './public',
@@ -61,6 +63,7 @@ const ASTRO_CONFIG_DEFAULTS = {
 		serverEntry: 'entry.mjs',
 		redirects: true,
 		inlineStylesheets: 'auto',
+		concurrency: 1,
 	},
 	image: {
 		service: { entrypoint: 'astro/assets/services/sharp', config: {} },
@@ -79,16 +82,18 @@ const ASTRO_CONFIG_DEFAULTS = {
 	vite: {},
 	legacy: {},
 	redirects: {},
+	security: {},
 	experimental: {
-		actions: false,
 		directRenderScript: false,
 		contentCollectionCache: false,
-		contentCollectionJsonSchema: false,
 		clientPrerender: false,
 		globalRoutePriority: false,
-		i18nDomains: false,
-		security: {},
-		rewriting: false,
+		serverIslands: false,
+		contentIntellisense: false,
+		env: {
+			validateSecrets: false,
+		},
+		contentLayer: false,
 	},
 } satisfies AstroUserConfig & { server: { open: boolean } };
 
@@ -140,7 +145,7 @@ export const AstroConfigSchema = z.object({
 		// validate
 		z
 			.array(z.object({ name: z.string(), hooks: z.object({}).passthrough().default({}) }))
-			.default(ASTRO_CONFIG_DEFAULTS.integrations)
+			.default(ASTRO_CONFIG_DEFAULTS.integrations),
 	),
 	build: z
 		.object({
@@ -174,7 +179,7 @@ export const AstroConfigSchema = z.object({
 					},
 					{
 						message: 'The `fallback` is mandatory when defining the option as an object.',
-					}
+					},
 				),
 			serverEntry: z.string().optional().default(ASTRO_CONFIG_DEFAULTS.build.serverEntry),
 			redirects: z.boolean().optional().default(ASTRO_CONFIG_DEFAULTS.build.redirects),
@@ -182,6 +187,7 @@ export const AstroConfigSchema = z.object({
 				.enum(['always', 'auto', 'never'])
 				.optional()
 				.default(ASTRO_CONFIG_DEFAULTS.build.inlineStylesheets),
+			concurrency: z.number().min(1).optional().default(ASTRO_CONFIG_DEFAULTS.build.concurrency),
 		})
 		.default({}),
 	server: z.preprocess(
@@ -203,7 +209,7 @@ export const AstroConfigSchema = z.object({
 				port: z.number().optional().default(ASTRO_CONFIG_DEFAULTS.server.port),
 				headers: z.custom<OutgoingHttpHeaders>().optional(),
 			})
-			.default({})
+			.default({}),
 	),
 	redirects: z
 		.record(
@@ -222,7 +228,7 @@ export const AstroConfigSchema = z.object({
 					]),
 					destination: z.string(),
 				}),
-			])
+			]),
 		)
 		.default(ASTRO_CONFIG_DEFAULTS.redirects),
 	prefetch: z
@@ -260,7 +266,7 @@ export const AstroConfigSchema = z.object({
 								(val) => !val.includes('*') || val.startsWith('*.') || val.startsWith('**.'),
 								{
 									message: 'wildcards can only be placed at the beginning of the hostname',
-								}
+								},
 							)
 							.optional(),
 						port: z.string().optional(),
@@ -270,7 +276,7 @@ export const AstroConfigSchema = z.object({
 								message: 'wildcards can only be placed at the end of a pathname',
 							})
 							.optional(),
-					})
+					}),
 				)
 				.default([]),
 		})
@@ -307,6 +313,10 @@ export const AstroConfigSchema = z.object({
 							return langs;
 						})
 						.default([]),
+					langAlias: z
+						.record(z.string(), z.string())
+						.optional()
+						.default(ASTRO_CONFIG_DEFAULTS.markdown.shikiConfig.langAlias!),
 					theme: z
 						.enum(Object.keys(bundledThemes) as [BuiltinTheme, ...BuiltinTheme[]])
 						.or(z.custom<ShikiTheme>())
@@ -315,9 +325,12 @@ export const AstroConfigSchema = z.object({
 						.record(
 							z
 								.enum(Object.keys(bundledThemes) as [BuiltinTheme, ...BuiltinTheme[]])
-								.or(z.custom<ShikiTheme>())
+								.or(z.custom<ShikiTheme>()),
 						)
 						.default(ASTRO_CONFIG_DEFAULTS.markdown.shikiConfig.themes!),
+					defaultColor: z
+						.union([z.literal('light'), z.literal('dark'), z.string(), z.literal(false)])
+						.optional(),
 					wrap: z.boolean().or(z.null()).default(ASTRO_CONFIG_DEFAULTS.markdown.shikiConfig.wrap!),
 					transformers: z
 						.custom<ShikiTransformer>()
@@ -375,7 +388,7 @@ export const AstroConfigSchema = z.object({
 							path: z.string(),
 							codes: z.string().array().nonempty(),
 						}),
-					])
+					]),
 				),
 				domains: z
 					.record(
@@ -383,8 +396,8 @@ export const AstroConfigSchema = z.object({
 						z
 							.string()
 							.url(
-								"The domain value must be a valid URL, and it has to start with 'https' or 'http'."
-							)
+								"The domain value must be a valid URL, and it has to start with 'https' or 'http'.",
+							),
 					)
 					.optional(),
 				fallback: z.record(z.string(), z.string()).optional(),
@@ -395,6 +408,7 @@ export const AstroConfigSchema = z.object({
 							.object({
 								prefixDefaultLocale: z.boolean().optional().default(false),
 								redirectToDefaultLocale: z.boolean().optional().default(true),
+								fallbackType: z.enum(['redirect', 'rewrite']).optional().default('redirect'),
 							})
 							.refine(
 								({ prefixDefaultLocale, redirectToDefaultLocale }) => {
@@ -403,8 +417,8 @@ export const AstroConfigSchema = z.object({
 								{
 									message:
 										'The option `i18n.redirectToDefaultLocale` is only useful when the `i18n.prefixDefaultLocale` is set to `true`. Remove the option `i18n.redirectToDefaultLocale`, or change its value to `true`.',
-								}
-							)
+								},
+							),
 					)
 					.optional()
 					.default({}),
@@ -491,11 +505,16 @@ export const AstroConfigSchema = z.object({
 						}
 					}
 				}
-			})
+			}),
 	),
+	security: z
+		.object({
+			checkOrigin: z.boolean().default(false),
+		})
+		.optional()
+		.default(ASTRO_CONFIG_DEFAULTS.security),
 	experimental: z
 		.object({
-			actions: z.boolean().optional().default(ASTRO_CONFIG_DEFAULTS.experimental.actions),
 			directRenderScript: z
 				.boolean()
 				.optional()
@@ -504,10 +523,6 @@ export const AstroConfigSchema = z.object({
 				.boolean()
 				.optional()
 				.default(ASTRO_CONFIG_DEFAULTS.experimental.contentCollectionCache),
-			contentCollectionJsonSchema: z
-				.boolean()
-				.optional()
-				.default(ASTRO_CONFIG_DEFAULTS.experimental.contentCollectionJsonSchema),
 			clientPrerender: z
 				.boolean()
 				.optional()
@@ -516,22 +531,28 @@ export const AstroConfigSchema = z.object({
 				.boolean()
 				.optional()
 				.default(ASTRO_CONFIG_DEFAULTS.experimental.globalRoutePriority),
-			security: z
+			env: z
 				.object({
-					csrfProtection: z
-						.object({
-							origin: z.boolean().default(false),
-						})
+					schema: EnvSchema.optional(),
+					validateSecrets: z
+						.boolean()
 						.optional()
-						.default({}),
+						.default(ASTRO_CONFIG_DEFAULTS.experimental.env.validateSecrets),
 				})
+				.strict()
+				.optional(),
+			serverIslands: z
+				.boolean()
 				.optional()
-				.default(ASTRO_CONFIG_DEFAULTS.experimental.security),
-			i18nDomains: z.boolean().optional().default(ASTRO_CONFIG_DEFAULTS.experimental.i18nDomains),
-			rewriting: z.boolean().optional().default(ASTRO_CONFIG_DEFAULTS.experimental.rewriting),
+				.default(ASTRO_CONFIG_DEFAULTS.experimental.serverIslands),
+			contentIntellisense: z
+				.boolean()
+				.optional()
+				.default(ASTRO_CONFIG_DEFAULTS.experimental.contentIntellisense),
+			contentLayer: z.boolean().optional().default(ASTRO_CONFIG_DEFAULTS.experimental.contentLayer),
 		})
 		.strict(
-			`Invalid or outdated experimental feature.\nCheck for incorrect spelling or outdated Astro version.\nSee https://docs.astro.build/en/reference/configuration-reference/#experimental-flags for a list of all current experiments.`
+			`Invalid or outdated experimental feature.\nCheck for incorrect spelling or outdated Astro version.\nSee https://docs.astro.build/en/reference/configuration-reference/#experimental-flags for a list of all current experiments.`,
 		)
 		.default({}),
 	legacy: z.object({}).default({}),
@@ -596,7 +617,7 @@ export function createRelativeSchema(cmd: string, fileProtocolRoot: string) {
 						},
 						{
 							message: 'The `fallback` is mandatory when defining the option as an object.',
-						}
+						},
 					),
 				serverEntry: z.string().optional().default(ASTRO_CONFIG_DEFAULTS.build.serverEntry),
 				redirects: z.boolean().optional().default(ASTRO_CONFIG_DEFAULTS.build.redirects),
@@ -604,6 +625,7 @@ export function createRelativeSchema(cmd: string, fileProtocolRoot: string) {
 					.enum(['always', 'auto', 'never'])
 					.optional()
 					.default(ASTRO_CONFIG_DEFAULTS.build.inlineStylesheets),
+				concurrency: z.number().min(1).optional().default(ASTRO_CONFIG_DEFAULTS.build.concurrency),
 			})
 			.optional()
 			.default({}),
@@ -632,7 +654,7 @@ export function createRelativeSchema(cmd: string, fileProtocolRoot: string) {
 					streaming: z.boolean().optional().default(true),
 				})
 				.optional()
-				.default({})
+				.default({}),
 		),
 	})
 		.transform((config) => {
@@ -667,23 +689,21 @@ export function createRelativeSchema(cmd: string, fileProtocolRoot: string) {
 				'The value of `outDir` must not point to a path within the folder set as `publicDir`, this will cause an infinite loop',
 		})
 		.superRefine((configuration, ctx) => {
-			const { site, experimental, i18n, output } = configuration;
-			if (experimental.i18nDomains) {
-				const hasDomains = i18n?.domains ? Object.keys(i18n.domains).length > 0 : false;
-				if (hasDomains) {
-					if (!site) {
-						ctx.addIssue({
-							code: z.ZodIssueCode.custom,
-							message:
-								"The option `site` isn't set. When using the 'domains' strategy for `i18n`, `site` is required to create absolute URLs for locales that aren't mapped to a domain.",
-						});
-					}
-					if (output !== 'server') {
-						ctx.addIssue({
-							code: z.ZodIssueCode.custom,
-							message: 'Domain support is only available when `output` is `"server"`.',
-						});
-					}
+			const { site, i18n, output } = configuration;
+			const hasDomains = i18n?.domains ? Object.keys(i18n.domains).length > 0 : false;
+			if (hasDomains) {
+				if (!site) {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message:
+							"The option `site` isn't set. When using the 'domains' strategy for `i18n`, `site` is required to create absolute URLs for locales that aren't mapped to a domain.",
+					});
+				}
+				if (output !== 'server') {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: 'Domain support is only available when `output` is `"server"`.',
+					});
 				}
 			}
 		});

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import fsMod from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import glob from 'fast-glob';
 import pLimit from 'p-limit';
 import { type Plugin as VitePlugin, normalizePath } from 'vite';
 import type { AstroConfig } from '../../../@types/astro.js';
@@ -20,15 +21,15 @@ import {
 } from '../../path.js';
 import { isContentCollectionsCacheEnabled } from '../../util.js';
 import { addRollupInput } from '../add-rollup-input.js';
-import { CHUNKS_PATH } from '../consts.js';
-import { type BuildInternals } from '../internal.js';
+import { CHUNKS_PATH, CONTENT_PATH } from '../consts.js';
+import type { BuildInternals } from '../internal.js';
 import type { AstroBuildPlugin } from '../plugin.js';
 import { copyFiles } from '../static-build.js';
 import type { StaticBuildOptions } from '../types.js';
 import { encodeName } from '../util.js';
 import { extendManualChunks } from './util.js';
 
-const CONTENT_CACHE_DIR = './content/';
+const CONTENT_CACHE_DIR = './' + CONTENT_PATH;
 const CONTENT_MANIFEST_FILE = './manifest.json';
 // IMPORTANT: Update this version when making significant changes to the manifest format.
 // Only manifests generated with the same version number can be compared.
@@ -39,6 +40,7 @@ interface ContentManifestKey {
 	type: 'content' | 'data';
 	entry: string;
 }
+
 interface ContentManifest {
 	version: number;
 	entries: [ContentManifestKey, string][];
@@ -78,7 +80,7 @@ function vitePluginContent(
 	opts: StaticBuildOptions,
 	lookupMap: ContentLookupMap,
 	internals: BuildInternals,
-	cachedBuildOutput: Array<{ cached: URL; dist: URL }>
+	cachedBuildOutput: Array<{ cached: URL; dist: URL }>,
 ): VitePlugin {
 	const { config } = opts.settings;
 	const distContentRoot = getContentRoot(config);
@@ -182,7 +184,7 @@ function vitePluginContent(
 						) {
 							const [srcRelativePath] = id.replace(rootPath, '/').split('?');
 							const resultId = encodeName(
-								`${removeLeadingForwardSlash(removeFileExtension(srcRelativePath))}.render.mjs`
+								`${removeLeadingForwardSlash(removeFileExtension(srcRelativePath))}.render.mjs`,
 							);
 							return resultId;
 						}
@@ -190,7 +192,7 @@ function vitePluginContent(
 						const collectionEntry = findEntryFromSrcRelativePath(
 							lookupMap,
 							srcRelativePath,
-							entryCache
+							entryCache,
 						);
 						if (collectionEntry) {
 							let suffix = '.mjs';
@@ -199,7 +201,7 @@ function vitePluginContent(
 							}
 							id =
 								removeLeadingForwardSlash(
-									removeFileExtension(encodeName(id.replace(srcPath, '/')))
+									removeFileExtension(encodeName(id.replace(srcPath, '/'))),
 								) + suffix;
 							return id;
 						}
@@ -254,6 +256,7 @@ function vitePluginContent(
 				...oldManifest.clientEntries,
 				...internals.discoveredHydratedComponents.keys(),
 				...internals.discoveredClientOnlyComponents.keys(),
+				...internals.discoveredScripts,
 			]);
 			// Likewise, these are server modules that might not be referenced
 			// once the cached items are excluded from the build process
@@ -281,7 +284,7 @@ function vitePluginContent(
 function findEntryFromSrcRelativePath(
 	lookupMap: ContentLookupMap,
 	srcRelativePath: string,
-	entryCache: Map<string, string>
+	entryCache: Map<string, string>,
 ) {
 	let value = entryCache.get(srcRelativePath);
 	if (value) return value;
@@ -302,9 +305,10 @@ interface ContentEntries {
 	restoreFromCache: ContentManifestKey[];
 	buildFromSource: ContentManifestKey[];
 }
+
 function getEntriesFromManifests(
 	oldManifest: ContentManifest,
-	newManifest: ContentManifest
+	newManifest: ContentManifest,
 ): ContentEntries {
 	const { entries: oldEntries } = oldManifest;
 	const { entries: newEntries } = newManifest;
@@ -316,7 +320,7 @@ function getEntriesFromManifests(
 		return entries;
 	}
 	const oldEntryHashMap = new Map<string, ContentManifestKey>(
-		oldEntries.map(([key, hash]) => [hash, key])
+		oldEntries.map(([key, hash]) => [hash, key]),
 	);
 
 	for (const [entry, hash] of newEntryMap) {
@@ -363,7 +367,7 @@ function manifestState(oldManifest: ContentManifest, newManifest: ContentManifes
 
 async function generateContentManifest(
 	opts: StaticBuildOptions,
-	lookupMap: ContentLookupMap
+	lookupMap: ContentLookupMap,
 ): Promise<ContentManifest> {
 	let manifest = createContentManifest();
 	manifest.version = CONTENT_MANIFEST_VERSION;
@@ -377,8 +381,8 @@ async function generateContentManifest(
 			promises.push(
 				limit(async () => {
 					const data = await fsMod.promises.readFile(fileURL, { encoding: 'utf8' });
-					manifest.entries.push([key, checksum(data)]);
-				})
+					manifest.entries.push([key, checksum(data, fileURL.toString())]);
+				}),
 			);
 		}
 	}
@@ -454,14 +458,29 @@ export async function copyContentToCache(opts: StaticBuildOptions) {
 
 	await fsMod.promises.mkdir(cacheTmp, { recursive: true });
 	await copyFiles(distContentRoot, cacheTmp, true);
-
 	await copyFiles(cacheTmp, contentCacheDir);
+
+	// Read the files from `dist/content/*` and `dist/chunks/*` so that
+	// we can clean them out of the dist folder
+	let files: string[] = [];
+	await Promise.all([
+		glob(`**/*.{mjs,json}`, {
+			cwd: fileURLToPath(cacheTmp),
+		}).then((f) => files.push(...f.map((file) => CONTENT_PATH + file))),
+		glob(`**/*.{mjs,json}`, {
+			cwd: fileURLToPath(new URL('./' + CHUNKS_PATH, config.outDir)),
+		}).then((f) => files.push(...f.map((file) => CHUNKS_PATH + file))),
+	]);
+
+	// Remove the tmp folder that's no longer needed.
 	await fsMod.promises.rm(cacheTmp, { recursive: true, force: true });
+
+	return files;
 }
 
 export function pluginContent(
 	opts: StaticBuildOptions,
-	internals: BuildInternals
+	internals: BuildInternals,
 ): AstroBuildPlugin {
 	const { cacheDir, outDir } = opts.settings.config;
 
@@ -491,11 +510,14 @@ export function pluginContent(
 					return;
 				}
 				// Cache build output of chunks and assets
+				const promises: Promise<void[] | undefined>[] = [];
 				for (const { cached, dist } of cachedBuildOutput) {
 					if (fsMod.existsSync(dist)) {
-						await copyFiles(dist, cached, true);
+						promises.push(copyFiles(dist, cached, true));
 					}
 				}
+
+				if (promises.length) await Promise.all(promises);
 			},
 		},
 	};

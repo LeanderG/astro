@@ -3,8 +3,9 @@ import type { Options as VueOptions } from '@vitejs/plugin-vue';
 import vue from '@vitejs/plugin-vue';
 import type { Options as VueJsxOptions } from '@vitejs/plugin-vue-jsx';
 import { MagicString } from '@vue/compiler-sfc';
-import type { AstroIntegration, AstroRenderer, HookParameters } from 'astro';
+import type { AstroIntegration, AstroRenderer, ContainerRenderer, HookParameters } from 'astro';
 import type { Plugin, UserConfig } from 'vite';
+import type { VitePluginVueDevToolsOptions } from 'vite-plugin-vue-devtools';
 
 const VIRTUAL_MODULE_ID = 'virtual:@astrojs/vue/app';
 const RESOLVED_VIRTUAL_MODULE_ID = `\0${VIRTUAL_MODULE_ID}`;
@@ -12,7 +13,7 @@ const RESOLVED_VIRTUAL_MODULE_ID = `\0${VIRTUAL_MODULE_ID}`;
 interface Options extends VueOptions {
 	jsx?: boolean | VueJsxOptions;
 	appEntrypoint?: string;
-	devtools?: boolean;
+	devtools?: boolean | Omit<VitePluginVueDevToolsOptions, 'appendTo'>;
 }
 
 function getRenderer(): AstroRenderer {
@@ -27,6 +28,13 @@ function getJsxRenderer(): AstroRenderer {
 	return {
 		name: '@astrojs/vue (jsx)',
 		clientEntrypoint: '@astrojs/vue/client.js',
+		serverEntrypoint: '@astrojs/vue/server.js',
+	};
+}
+
+export function getContainerRenderer(): ContainerRenderer {
+	return {
+		name: '@astrojs/vue',
 		serverEntrypoint: '@astrojs/vue/server.js',
 	};
 }
@@ -67,7 +75,7 @@ export const setup = async (app) => {
 		${
 			!isBuild
 				? `console.warn("[@astrojs/vue] appEntrypoint \`" + ${JSON.stringify(
-						appEntrypoint
+						appEntrypoint,
 					)} + "\` does not export a default function. Check out https://docs.astro.build/en/guides/integrations-guide/vue/#appentrypoint.");`
 				: ''
 		}
@@ -96,7 +104,7 @@ export const setup = async (app) => {
 
 async function getViteConfiguration(
 	command: HookParameters<'astro:config:setup'>['command'],
-	options?: Options
+	options?: Options,
 ): Promise<UserConfig> {
 	let vueOptions = {
 		...options,
@@ -125,10 +133,12 @@ async function getViteConfiguration(
 
 	if (command === 'dev' && options?.devtools) {
 		const vueDevTools = (await import('vite-plugin-vue-devtools')).default;
+		const devToolsOptions = typeof options.devtools === 'object' ? options.devtools : {};
 		config.plugins?.push(
 			vueDevTools({
+				...devToolsOptions,
 				appendTo: VIRTUAL_MODULE_ID,
-			})
+			}),
 		);
 	}
 

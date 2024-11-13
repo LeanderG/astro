@@ -15,14 +15,14 @@ export async function renderToString(
 	props: any,
 	children: any,
 	isPage = false,
-	route?: RouteData
+	route?: RouteData,
 ): Promise<string | Response> {
 	const templateResult = await callComponentAsTemplateResultOrResponse(
 		result,
 		componentFactory,
 		props,
 		children,
-		route
+		route,
 	);
 
 	// If the Astro component returns a Response on init, return that response
@@ -65,14 +65,14 @@ export async function renderToReadableStream(
 	props: any,
 	children: any,
 	isPage = false,
-	route?: RouteData
+	route?: RouteData,
 ): Promise<ReadableStream | Response> {
 	const templateResult = await callComponentAsTemplateResultOrResponse(
 		result,
 		componentFactory,
 		props,
 		children,
-		route
+		route,
 	);
 
 	// If the Astro component returns a Response on init, return that response
@@ -142,12 +142,31 @@ async function callComponentAsTemplateResultOrResponse(
 	componentFactory: AstroComponentFactory,
 	props: any,
 	children: any,
-	route?: RouteData
+	route?: RouteData,
 ) {
 	const factoryResult = await componentFactory(result, props, children);
 
 	if (factoryResult instanceof Response) {
 		return factoryResult;
+	}
+	// we check if the component we attempt to render is a head+content
+	else if (isHeadAndContent(factoryResult)) {
+		// we make sure that content is valid template result
+		if (!isRenderTemplateResult(factoryResult.content)) {
+			throw new AstroError({
+				...AstroErrorData.OnlyResponseCanBeReturned,
+				message: AstroErrorData.OnlyResponseCanBeReturned.message(
+					route?.route,
+					typeof factoryResult,
+				),
+				location: {
+					file: route?.component,
+				},
+			});
+		}
+
+		// return the content
+		return factoryResult.content;
 	} else if (!isRenderTemplateResult(factoryResult)) {
 		throw new AstroError({
 			...AstroErrorData.OnlyResponseCanBeReturned,
@@ -158,7 +177,7 @@ async function callComponentAsTemplateResultOrResponse(
 		});
 	}
 
-	return isHeadAndContent(factoryResult) ? factoryResult.content : factoryResult;
+	return factoryResult;
 }
 
 // Recursively calls component instances that might have head content
@@ -184,14 +203,14 @@ export async function renderToAsyncIterable(
 	props: any,
 	children: any,
 	isPage = false,
-	route?: RouteData
+	route?: RouteData,
 ): Promise<AsyncIterable<Uint8Array> | Response> {
 	const templateResult = await callComponentAsTemplateResultOrResponse(
 		result,
 		componentFactory,
 		props,
 		children,
-		route
+		route,
 	);
 	if (templateResult instanceof Response) return templateResult;
 	let renderedFirstPageChunk = false;
@@ -209,14 +228,28 @@ export async function renderToAsyncIterable(
 	let error: Error | null = null;
 	// The `next` is an object `{ promise, resolve, reject }` that we use to wait
 	// for chunks to be pushed into the buffer.
-	let next = promiseWithResolvers<void>();
+	let next: ReturnType<typeof promiseWithResolvers<void>> | null = null;
 	const buffer: Uint8Array[] = []; // []Uint8Array
+	let renderingComplete = false;
 
 	const iterator: AsyncIterator<Uint8Array> = {
 		async next() {
 			if (result.cancelled) return { done: true, value: undefined };
 
-			await next.promise;
+			if (next !== null) {
+				await next.promise;
+			}
+			// Buffer is empty so there's nothing to receive, wait for the next resolve.
+			else if (!renderingComplete && !buffer.length) {
+				next = promiseWithResolvers();
+				await next.promise;
+			}
+
+			// Only create a new promise if rendering is still ongoing. Otherwise
+			// there will be a dangling promises that breaks tests (probably not an actual app)
+			if (!renderingComplete) {
+				next = promiseWithResolvers();
+			}
 
 			// If an error occurs during rendering, throw the error as we cannot proceed.
 			if (error) {
@@ -242,8 +275,9 @@ export async function renderToAsyncIterable(
 			buffer.length = 0;
 
 			const returnValue = {
-				// The iterator is done if there are no chunks to return.
-				done: length === 0,
+				// The iterator is done when rendering has finished
+				// and there are no more chunks to return.
+				done: length === 0 && renderingComplete,
 				value: mergedArray,
 			};
 
@@ -276,8 +310,9 @@ export async function renderToAsyncIterable(
 				// Push the chunks into the buffer and resolve the promise so that next()
 				// will run.
 				buffer.push(bytes);
-				next.resolve();
-				next = promiseWithResolvers<void>();
+				next?.resolve();
+			} else if (buffer.length > 0) {
+				next?.resolve();
 			}
 		},
 	};
@@ -286,12 +321,14 @@ export async function renderToAsyncIterable(
 	renderPromise
 		.then(() => {
 			// Once rendering is complete, calling resolve() allows the iterator to finish running.
-			next.resolve();
+			renderingComplete = true;
+			next?.resolve();
 		})
 		.catch((err) => {
 			// If an error occurs, save it in the scope so that we throw it when next() is called.
 			error = err;
-			next.resolve();
+			renderingComplete = true;
+			next?.resolve();
 		});
 
 	// This is the Iterator protocol, an object with a `Symbol.asyncIterator`

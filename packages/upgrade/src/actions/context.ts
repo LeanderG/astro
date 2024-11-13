@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import { prompt } from '@astrojs/cli-kit';
 import arg from 'arg';
-import detectPackageManager from 'which-pm-runs';
+import detectPackageManager from 'preferred-pm';
 
 export interface Context {
 	help: boolean;
@@ -35,10 +35,10 @@ export async function getContext(argv: string[]): Promise<Context> {
 
 			'-h': '--help',
 		},
-		{ argv, permissive: true }
+		{ argv, permissive: true },
 	);
 
-	const packageManager = detectPackageManager()?.name ?? 'npm';
+	const packageManager = (await detectPackageManager(process.cwd()))?.name ?? 'npm';
 	const {
 		_: [version = 'latest'] = [],
 		'--help': help = false,

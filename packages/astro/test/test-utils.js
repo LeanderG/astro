@@ -2,10 +2,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripVTControlCharacters } from 'node:util';
 import { execa } from 'execa';
 import fastGlob from 'fast-glob';
-import stripAnsi from 'strip-ansi';
+import { Agent } from 'undici';
 import { check } from '../dist/cli/check/index.js';
+import { globalContentLayer } from '../dist/content/content-layer.js';
+import { globalContentConfigObserver } from '../dist/content/utils.js';
 import build from '../dist/core/build/index.js';
 import { RESOLVED_SPLIT_MODULE_ID } from '../dist/core/build/plugins/plugin-ssr.js';
 import { getVirtualModulePageName } from '../dist/core/build/plugins/util.js';
@@ -21,10 +24,13 @@ process.env.ASTRO_TELEMETRY_DISABLED = true;
 /**
  * @typedef {import('../src/core/dev/dev').DevServer} DevServer
  * @typedef {import('../src/@types/astro').AstroInlineConfig & { root?: string | URL }} AstroInlineConfig
+ * @typedef {import('../src/@types/astro').AstroConfig} AstroConfig
  * @typedef {import('../src/core/preview/index').PreviewServer} PreviewServer
  * @typedef {import('../src/core/app/index').App} App
  * @typedef {import('../src/cli/check/index').AstroChecker} AstroChecker
  * @typedef {import('../src/cli/check/index').CheckPayload} CheckPayload
+ * @typedef {import('http').IncomingMessage} NodeRequest
+ * @typedef {import('http').ServerResponse} NodeResponse
  *
  *
  * @typedef {Object} Fixture
@@ -33,16 +39,19 @@ process.env.ASTRO_TELEMETRY_DISABLED = true;
  * @property {(path: string) => Promise<boolean>} pathExists
  * @property {(url: string, opts: Parameters<typeof fetch>[1]) => Promise<Response>} fetch
  * @property {(path: string) => Promise<string>} readFile
- * @property {(path: string, updater: (content: string) => string) => Promise<void>} writeFile
+ * @property {(path: string, updater: (content: string) => string) => Promise<void>} editFile
  * @property {(path: string) => Promise<string[]>} readdir
  * @property {(pattern: string) => Promise<string[]>} glob
  * @property {typeof dev} startDevServer
  * @property {typeof preview} preview
  * @property {() => Promise<void>} clean
  * @property {() => Promise<App>} loadTestAdapterApp
+ * @property {() => Promise<(req: NodeRequest, res: NodeResponse) => void>} loadNodeAdapterHandler
  * @property {() => Promise<void>} onNextChange
+ * @property {(timeout?: number) => Promise<void>} onNextDataStoreChange
  * @property {typeof check} check
  * @property {typeof sync} sync
+ * @property {AstroConfig} config
  *
  * This function returns an instance of the Check
  *
@@ -119,8 +128,13 @@ export async function loadFixture(inlineConfig) {
 	// Load the config.
 	const { astroConfig: config } = await resolveConfig(inlineConfig, 'dev');
 
+	const protocol = config.vite?.server?.https ? 'https' : 'http';
+
 	const resolveUrl = (url) =>
-		`http://${config.server.host || 'localhost'}:${config.server.port}${url.replace(/^\/?/, '/')}`;
+		`${protocol}://${config.server.host || 'localhost'}:${config.server.port}${url.replace(
+			/^\/?/,
+			'/',
+		)}`;
 
 	// A map of files that have been edited.
 	let fileEdits = new Map();
@@ -148,26 +162,67 @@ export async function loadFixture(inlineConfig) {
 	let devServer;
 
 	return {
-		build: async (extraInlineConfig = {}) => {
+		build: async (extraInlineConfig = {}, options = {}) => {
+			globalContentLayer.dispose();
+			globalContentConfigObserver.set({ status: 'init' });
 			process.env.NODE_ENV = 'production';
-			return build(mergeConfig(inlineConfig, extraInlineConfig), { teardownCompiler: false });
+			return build(mergeConfig(inlineConfig, extraInlineConfig), {
+				teardownCompiler: false,
+				...options,
+			});
 		},
-		sync: async (extraInlineConfig = {}, opts) => {
-			return sync(mergeConfig(inlineConfig, extraInlineConfig), opts);
-		},
+		sync,
 		check: async (opts) => {
 			return await check(opts);
 		},
 		startDevServer: async (extraInlineConfig = {}) => {
+			globalContentLayer.dispose();
+			globalContentConfigObserver.set({ status: 'init' });
 			process.env.NODE_ENV = 'development';
 			devServer = await dev(mergeConfig(inlineConfig, extraInlineConfig));
 			config.server.host = parseAddressToHost(devServer.address.address); // update host
 			config.server.port = devServer.address.port; // update port
 			return devServer;
 		},
+		onNextDataStoreChange: (timeout = 5000) => {
+			if (!devServer) {
+				return Promise.reject(new Error('No dev server running'));
+			}
+
+			const dataStoreFile = path.join(root, '.astro', 'data-store.json');
+
+			return new Promise((resolve, reject) => {
+				const changeHandler = (fileName) => {
+					if (fileName === dataStoreFile) {
+						devServer.watcher.removeListener('change', changeHandler);
+						resolve();
+					}
+				};
+				devServer.watcher.on('change', changeHandler);
+				setTimeout(() => {
+					devServer.watcher.removeListener('change', changeHandler);
+					reject(new Error('Data store did not update within timeout'));
+				}, timeout);
+			});
+		},
 		config,
 		resolveUrl,
 		fetch: async (url, init) => {
+			if (config.vite?.server?.https) {
+				init = {
+					// Use a custom fetch dispatcher. This is an undici option that allows
+					// us to customize the fetch behavior. We use it here to allow h2.
+					dispatcher: new Agent({
+						connect: {
+							// We disable cert validation because we're using self-signed certs
+							rejectUnauthorized: false,
+						},
+						// Enable HTTP/2 support
+						allowH2: true,
+					}),
+					...init,
+				};
+			}
 			const resolvedUrl = resolveUrl(url);
 			try {
 				return await fetch(resolvedUrl, init);
@@ -191,7 +246,7 @@ export async function loadFixture(inlineConfig) {
 		readFile: (filePath, encoding) =>
 			fs.promises.readFile(
 				new URL(filePath.replace(/^\//, ''), config.outDir),
-				encoding === undefined ? 'utf8' : encoding
+				encoding === undefined ? 'utf8' : encoding,
 			),
 		readdir: (fp) => fs.promises.readdir(new URL(fp.replace(/^\//, ''), config.outDir)),
 		glob: (p) =>
@@ -212,6 +267,15 @@ export async function loadFixture(inlineConfig) {
 					force: true,
 				});
 			}
+		},
+		loadAdapterEntryModule: async () => {
+			const url = new URL(`./server/entry.mjs?id=${fixtureId}`, config.outDir);
+			return await import(url);
+		},
+		loadNodeAdapterHandler: async () => {
+			const url = new URL(`./server/entry.mjs?id=${fixtureId}`, config.outDir);
+			const { handler } = await import(url);
+			return handler;
 		},
 		loadTestAdapterApp: async (streaming) => {
 			const url = new URL(`./server/entry.mjs?id=${fixtureId}`, config.outDir);
@@ -244,7 +308,7 @@ export async function loadFixture(inlineConfig) {
 				typeof newContentsOrCallback === 'function'
 					? newContentsOrCallback(contents)
 					: newContentsOrCallback;
-			const nextChange = onNextChange();
+			const nextChange = devServer ? onNextChange() : Promise.resolve();
 			await fs.promises.writeFile(fileUrl, newContents);
 			await nextChange;
 			return reset;
@@ -292,8 +356,8 @@ export async function parseCliDevStart(proc) {
 	}
 
 	proc.kill();
-	stdout = stripAnsi(stdout);
-	stderr = stripAnsi(stderr);
+	stdout = stripVTControlCharacters(stdout);
+	stderr = stripVTControlCharacters(stderr);
 
 	if (stderr) {
 		throw new Error(stderr);

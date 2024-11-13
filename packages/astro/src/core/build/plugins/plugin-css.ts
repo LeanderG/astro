@@ -30,7 +30,7 @@ interface PluginOptions {
 
 export function pluginCSS(
 	options: StaticBuildOptions,
-	internals: BuildInternals
+	internals: BuildInternals,
 ): AstroBuildPlugin {
 	return {
 		targets: ['client', 'server'],
@@ -70,7 +70,7 @@ function rollupPluginAstroBuildCSS(options: PluginOptions): VitePlugin[] {
 			const assetFileNames = outputOptions.assetFileNames;
 			const namingIncludesHash = assetFileNames?.toString().includes('[hash]');
 			const createNameForParentPages = namingIncludesHash
-				? assetName.shortHashedName
+				? assetName.shortHashedName(settings)
 				: assetName.createSlugger(settings);
 
 			extendManualChunks(outputOptions, {
@@ -94,7 +94,7 @@ function rollupPluginAstroBuildCSS(options: PluginOptions): VitePlugin[] {
 							if (hasAssetPropagationFlag(pageInfo.id)) {
 								// Split delayed assets to separate modules
 								// so they can be injected where needed
-								const chunkId = assetName.createNameHash(id, [id]);
+								const chunkId = assetName.createNameHash(id, [id], settings);
 								internals.cssModuleToChunkIdMap.set(id, chunkId);
 								return chunkId;
 							}
@@ -145,12 +145,21 @@ function rollupPluginAstroBuildCSS(options: PluginOptions): VitePlugin[] {
 							if (pageData) {
 								appendCSSToPage(pageData, meta, pagesToCss, depth, order);
 							}
-						} else if (
-							options.target === 'client' &&
-							internals.hoistedScriptIdToPagesMap.has(pageInfo.id)
-						) {
-							for (const pageData of getPageDatasByHoistedScriptId(internals, pageInfo.id)) {
-								appendCSSToPage(pageData, meta, pagesToCss, -1, order);
+						} else if (options.target === 'client') {
+							// For scripts or hoisted scripts, walk parents until you find a page, and add the CSS to that page.
+							if (buildOptions.settings.config.experimental.directRenderScript) {
+								const pageDatas = internals.pagesByScriptId.get(pageInfo.id)!;
+								if (pageDatas) {
+									for (const pageData of pageDatas) {
+										appendCSSToPage(pageData, meta, pagesToCss, -1, order);
+									}
+								}
+							} else {
+								if (internals.hoistedScriptIdToPagesMap.has(pageInfo.id)) {
+									for (const pageData of getPageDatasByHoistedScriptId(internals, pageInfo.id)) {
+										appendCSSToPage(pageData, meta, pagesToCss, -1, order);
+									}
+								}
 							}
 						}
 					}
@@ -197,7 +206,7 @@ function rollupPluginAstroBuildCSS(options: PluginOptions): VitePlugin[] {
 			// Ref: https://github.com/vitejs/vite/blob/b2c0ee04d4db4a0ef5a084c50f49782c5f88587c/packages/vite/src/node/plugins/html.ts#L690-L705
 			if (resolvedConfig.build.cssCodeSplit) return;
 			const cssChunk = Object.values(bundle).find(
-				(chunk) => chunk.type === 'asset' && chunk.name === 'style.css'
+				(chunk) => chunk.type === 'asset' && chunk.name === 'style.css',
 			);
 			if (cssChunk === undefined) return;
 			for (const pageData of internals.pagesByKeys.values()) {
@@ -284,7 +293,7 @@ function rollupPluginAstroBuildCSS(options: PluginOptions): VitePlugin[] {
 function* getParentClientOnlys(
 	id: string,
 	ctx: { getModuleInfo: GetModuleInfo },
-	internals: BuildInternals
+	internals: BuildInternals,
 ): Generator<PageBuildData, void, unknown> {
 	for (const info of getParentModuleInfos(id, ctx)) {
 		yield* getPageDatasByClientOnlyID(internals, info.id);
@@ -301,7 +310,7 @@ function appendCSSToPage(
 	meta: ViteMetadata,
 	pagesToCss: Record<string, Record<string, { order: number; depth: number }>>,
 	depth: number,
-	order: number
+	order: number,
 ) {
 	for (const importedCssImport of meta.importedCss) {
 		// CSS is prioritized based on depth. Shared CSS has a higher depth due to being imported by multiple pages.
@@ -332,7 +341,7 @@ function appendCSSToPage(
  */
 function isCssScopeToRendered(
 	cssScopeTo: Record<string, string[]>,
-	chunks: Rollup.RenderedChunk[]
+	chunks: Rollup.RenderedChunk[],
 ) {
 	for (const moduleId in cssScopeTo) {
 		const exports = cssScopeTo[moduleId];

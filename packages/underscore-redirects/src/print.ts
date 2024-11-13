@@ -12,7 +12,7 @@ import type { RedirectDefinition } from './redirects.js';
 export function print(
 	definitions: RedirectDefinition[],
 	minInputLength: number,
-	minTargetLength: number
+	minTargetLength: number,
 ) {
 	let _redirects = '';
 
@@ -29,7 +29,8 @@ export function print(
 			' '.repeat(inputSpaces) +
 			definition.target +
 			' '.repeat(Math.abs(targetSpaces)) +
-			definition.status;
+			definition.status +
+			(definition.force ? '!' : '');
 	}
 
 	return _redirects;

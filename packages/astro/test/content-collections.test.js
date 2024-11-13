@@ -59,7 +59,7 @@ describe('Content Collections', () => {
 				assert.equal(
 					publishedDates.every((date) => date instanceof Date),
 					true,
-					'Not all publishedAt dates are Date objects'
+					'Not all publishedAt dates are Date objects',
 				);
 				assert.deepEqual(
 					publishedDates.map((date) => date.toISOString()),
@@ -68,7 +68,7 @@ describe('Content Collections', () => {
 						'2021-01-01T00:00:00.000Z',
 						'2021-01-03T00:00:00.000Z',
 						'2021-01-02T00:00:00.000Z',
-					]
+					],
 				);
 			});
 
@@ -98,6 +98,28 @@ describe('Content Collections', () => {
 					subject: 'My Newsletter',
 				});
 			});
+
+			it('Handles symlinked content', async () => {
+				assert.ok(json.hasOwnProperty('withSymlinkedContent'));
+				assert.equal(Array.isArray(json.withSymlinkedContent), true);
+
+				const ids = json.withSymlinkedContent.map((item) => item.id);
+				assert.deepEqual(ids, ['first.md', 'second.md', 'third.md']);
+				assert.equal(json.withSymlinkedContent[0].data.title, 'First Blog');
+			});
+
+			it('Handles symlinked data', async () => {
+				assert.ok(json.hasOwnProperty('withSymlinkedData'));
+				assert.equal(Array.isArray(json.withSymlinkedData), true);
+
+				const ids = json.withSymlinkedData.map((item) => item.id);
+				assert.deepEqual(ids, ['welcome']);
+				assert.equal(
+					json.withSymlinkedData[0].data.alt,
+					'Futuristic landscape with chrome buildings and blue skies',
+				);
+				assert.notEqual(json.withSymlinkedData[0].data.src.src, undefined);
+			});
 		});
 
 		describe('Propagation', () => {
@@ -126,7 +148,7 @@ describe('Content Collections', () => {
 				assert.equal(json.oneWithSchemaConfig.data.publishedAt instanceof Date, true);
 				assert.equal(
 					json.oneWithSchemaConfig.data.publishedAt.toISOString(),
-					'2021-01-01T00:00:00.000Z'
+					'2021-01-01T00:00:00.000Z',
 				);
 			});
 
@@ -143,6 +165,25 @@ describe('Content Collections', () => {
 					title: 'My Post',
 					description: 'This is my post',
 				});
+			});
+		});
+
+		describe('Hoisted scripts', () => {
+			it('Contains all the scripts imported by components', async () => {
+				const html = await fixture.readFile('/with-scripts/one/index.html');
+				const $ = cheerio.load(html);
+				// NOTE: Hoisted scripts have two tags currently but could be optimized as one. However, we're moving towards
+				// `experimental.directRenderScript` so this optimization isn't a priority at the moment.
+				assert.equal($('script').length, 2);
+				// Read the scripts' content
+				const scripts = $('script')
+					.map((_, el) => $(el).attr('src'))
+					.toArray();
+				const scriptsCode = (
+					await Promise.all(scripts.map(async (src) => await fixture.readFile(src)))
+				).join('\n');
+				assert.match(scriptsCode, /ScriptCompA/);
+				assert.match(scriptsCode, /ScriptCompB/);
 			});
 		});
 	});
@@ -198,7 +239,7 @@ describe('Content Collections', () => {
 				const $ = cheerio.load(post);
 				assert.equal(
 					$(blogSlugToContents[slug].element).text().trim(),
-					blogSlugToContents[slug].content
+					blogSlugToContents[slug].content,
 				);
 			}
 		});
@@ -323,7 +364,7 @@ describe('Content Collections', () => {
 				const $ = cheerio.load(body);
 				assert.equal(
 					$(blogSlugToContents[slug].element).text().trim(),
-					blogSlugToContents[slug].content
+					blogSlugToContents[slug].content,
 				);
 			}
 		});
@@ -349,6 +390,26 @@ describe('Content Collections', () => {
 			const html = await fixture.readFile('/docs/index.html');
 			const $ = cheerio.load(html);
 			assert.equal($('script').attr('src').startsWith('/docs'), true);
+		});
+	});
+
+	describe('Mutation', () => {
+		let fixture;
+
+		before(async () => {
+			fixture = await loadFixture({
+				root: './fixtures/content-collections-mutation/',
+			});
+			await fixture.build();
+		});
+
+		it('Does not mutate cached collection', async () => {
+			const html = await fixture.readFile('/index.html');
+			const index = cheerio.load(html)('h2:first').text();
+			const html2 = await fixture.readFile('/another_page/index.html');
+			const anotherPage = cheerio.load(html2)('h2:first').text();
+
+			assert.equal(index, anotherPage);
 		});
 	});
 });

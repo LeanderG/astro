@@ -14,8 +14,8 @@ import {
 	getStudioVirtualModContents,
 } from '../../../integration/vite-plugin-db.js';
 import { bundleFile, importBundledFile } from '../../../load-file.js';
-import { getManagedAppTokenOrExit } from '../../../tokens.js';
 import type { DBConfig } from '../../../types.js';
+import { getManagedRemoteToken } from '../../../utils.js';
 
 export async function cmd({
 	astroConfig,
@@ -40,7 +40,7 @@ export async function cmd({
 
 	let virtualModContents: string;
 	if (flags.remote) {
-		const appToken = await getManagedAppTokenOrExit(flags.token);
+		const appToken = await getManagedRemoteToken(flags.token);
 		virtualModContents = getStudioVirtualModContents({
 			tables: dbConfig.tables ?? {},
 			appToken: appToken.token,

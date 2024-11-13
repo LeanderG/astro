@@ -1,5 +1,29 @@
 # @astrojs/sitemap
 
+## 3.2.1
+
+### Patch Changes
+
+- [#12156](https://github.com/withastro/astro/pull/12156) [`07754f5`](https://github.com/withastro/astro/commit/07754f5873b05ab4dae31ded7264fe4056c2dfc8) Thanks [@mingjunlu](https://github.com/mingjunlu)! - Adds missing `xslURL` property to `SitemapOptions` type.
+
+## 3.2.0
+
+### Minor Changes
+
+- [#11485](https://github.com/withastro/astro/pull/11485) [`fbe1bc5`](https://github.com/withastro/astro/commit/fbe1bc51d89994c4919c12768908658604513bd3) Thanks [@sondr3](https://github.com/sondr3)! - Adds new `xslURL` option to enable styling of sitemaps
+
+## 3.1.6
+
+### Patch Changes
+
+- [#11263](https://github.com/withastro/astro/pull/11263) [`7d59750`](https://github.com/withastro/astro/commit/7d597506615fa5a34327304e8321be7b9c4b799d) Thanks [@wackbyte](https://github.com/wackbyte)! - Refactor to use Astro's integration logger for logging
+
+## 3.1.5
+
+### Patch Changes
+
+- [#10779](https://github.com/withastro/astro/pull/10779) [`cefeadf`](https://github.com/withastro/astro/commit/cefeadf0a4a51420130445b6dc5ab1e5b331732b) Thanks [@adrianlyjak](https://github.com/adrianlyjak)! - Fixes false positives for status code routes like `404` and `500` when generating sitemaps.
+
 ## 3.1.4
 
 ### Patch Changes

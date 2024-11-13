@@ -1,5 +1,5 @@
-import { expect } from 'chai';
-import { describe, it } from 'mocha';
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
 import { getTableChangeQueries } from '../../dist/core/cli/migration-queries.js';
 import { tablesSchema } from '../../dist/core/schemas.js';
 import { column, defineTable } from '../../dist/runtime/virtual.js';
@@ -32,7 +32,7 @@ function resolveReferences(
 	{ User = BaseUser, SentBox = BaseSentBox } = {
 		User: BaseUser,
 		SentBox: BaseSentBox,
-	}
+	},
 ) {
 	return tablesSchema.parse({ User, SentBox });
 }
@@ -59,11 +59,11 @@ describe('reference queries', () => {
 
 		const { queries } = await userChangeQueries(Initial, Final);
 
-		expect(queries[0]).to.not.be.undefined;
+		assert.equal(queries[0] !== undefined, true);
 		const tempTableName = getTempTableName(queries[0]);
-		expect(tempTableName).to.not.be.undefined;
+		assert.notEqual(typeof tempTableName, 'undefined');
 
-		expect(queries).to.deep.equal([
+		assert.deepEqual(queries, [
 			`CREATE TABLE \"${tempTableName}\" (_id INTEGER PRIMARY KEY, \"to\" integer NOT NULL REFERENCES \"User\" (\"id\"), \"toName\" text NOT NULL, \"subject\" text NOT NULL, \"body\" text NOT NULL)`,
 			`INSERT INTO \"${tempTableName}\" (\"_id\", \"to\", \"toName\", \"subject\", \"body\") SELECT \"_id\", \"to\", \"toName\", \"subject\", \"body\" FROM \"User\"`,
 			'DROP TABLE "User"',
@@ -84,11 +84,11 @@ describe('reference queries', () => {
 
 		const { queries } = await userChangeQueries(Initial, Final);
 
-		expect(queries[0]).to.not.be.undefined;
+		assert.equal(queries[0] !== undefined, true);
 		const tempTableName = getTempTableName(queries[0]);
-		expect(tempTableName).to.not.be.undefined;
+		assert.notEqual(typeof tempTableName, 'undefined');
 
-		expect(queries).to.deep.equal([
+		assert.deepEqual(queries, [
 			`CREATE TABLE \"${tempTableName}\" (_id INTEGER PRIMARY KEY, \"to\" integer NOT NULL, \"toName\" text NOT NULL, \"subject\" text NOT NULL, \"body\" text NOT NULL)`,
 			`INSERT INTO \"${tempTableName}\" (\"_id\", \"to\", \"toName\", \"subject\", \"body\") SELECT \"_id\", \"to\", \"toName\", \"subject\", \"body\" FROM \"User\"`,
 			'DROP TABLE "User"',
@@ -108,10 +108,10 @@ describe('reference queries', () => {
 		});
 
 		const { queries } = await userChangeQueries(Initial, Final);
-		expect(queries[0]).to.not.be.undefined;
+		assert.equal(queries[0] !== undefined, true);
 		const tempTableName = getTempTableName(queries[0]);
 
-		expect(queries).to.deep.equal([
+		assert.deepEqual(queries, [
 			`CREATE TABLE \"${tempTableName}\" (_id INTEGER PRIMARY KEY, \"to\" integer NOT NULL, \"toName\" text NOT NULL, \"subject\" text NOT NULL, \"body\" text NOT NULL, \"from\" integer REFERENCES \"User\" (\"id\"))`,
 			`INSERT INTO \"${tempTableName}\" (\"_id\", \"to\", \"toName\", \"subject\", \"body\") SELECT \"_id\", \"to\", \"toName\", \"subject\", \"body\" FROM \"User\"`,
 			'DROP TABLE "User"',
@@ -149,21 +149,21 @@ describe('reference queries', () => {
 		const addedForeignKey = await userChangeQueries(InitialWithoutFK, Final);
 		const updatedForeignKey = await userChangeQueries(InitialWithDifferentFK, Final);
 
-		expect(addedForeignKey.queries[0]).to.not.be.undefined;
-		expect(updatedForeignKey.queries[0]).to.not.be.undefined;
-
-		expect(addedForeignKey.queries).to.deep.equal(
-			expected(getTempTableName(addedForeignKey.queries[0]))
+		assert.notEqual(typeof addedForeignKey.queries[0], 'undefined');
+		assert.notEqual(typeof updatedForeignKey.queries[0], 'undefined');
+		assert.deepEqual(
+			addedForeignKey.queries,
+			expected(getTempTableName(addedForeignKey.queries[0])),
 		);
 
-		expect(updatedForeignKey.queries).to.deep.equal(
-			expected(getTempTableName(updatedForeignKey.queries[0]))
+		assert.deepEqual(
+			updatedForeignKey.queries,
+			expected(getTempTableName(updatedForeignKey.queries[0])),
 		);
 	});
 });
 
-/** @param {string | undefined} query */
+/** @param {string} query */
 function getTempTableName(query) {
-	// eslint-disable-next-line regexp/no-unused-capturing-group
-	return query.match(/User_([a-z\d]+)/)?.[0];
+	return /User_[a-z\d]+/.exec(query)?.[0];
 }

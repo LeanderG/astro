@@ -32,13 +32,13 @@ export type RSSOptions = {
 
 export type RSSFeedItem = {
 	/** Link to item */
-	link: z.infer<typeof rssSchema>['link'];
+	link?: z.infer<typeof rssSchema>['link'];
 	/** Full content of the item. Should be valid HTML */
 	content?: z.infer<typeof rssSchema>['content'];
 	/** Title of item */
-	title: z.infer<typeof rssSchema>['title'];
+	title?: z.infer<typeof rssSchema>['title'];
 	/** Publication date of item */
-	pubDate: z.infer<typeof rssSchema>['pubDate'];
+	pubDate?: z.infer<typeof rssSchema>['pubDate'];
 	/** Item description */
 	description?: z.infer<typeof rssSchema>['description'];
 	/** Append some other XML-valid data to this item */
@@ -70,11 +70,10 @@ const rssOptionsValidator = z.object({
 		.or(globResultValidator)
 		.transform((items) => {
 			if (!Array.isArray(items)) {
-				// eslint-disable-next-line
 				console.warn(
 					yellow(
-						'[RSS] Passing a glob result directly has been deprecated. Please migrate to the `pagesGlobToRssItems()` helper: https://docs.astro.build/en/guides/rss/'
-					)
+						'[RSS] Passing a glob result directly has been deprecated. Please migrate to the `pagesGlobToRssItems()` helper: https://docs.astro.build/en/guides/rss/',
+					),
 				);
 				return pagesGlobToRssItems(items);
 			}
@@ -123,7 +122,7 @@ async function validateRssOptions(rssOptions: RSSOptions) {
 
 				return message;
 			}),
-		].join('\n')
+		].join('\n'),
 	);
 	throw formattedError;
 }
@@ -134,7 +133,7 @@ export function pagesGlobToRssItems(items: GlobResult): Promise<ValidatedRSSFeed
 			const { url, frontmatter } = await getInfo();
 			if (url === undefined || url === null) {
 				throw new Error(
-					`[RSS] You can only glob entries within 'src/pages/' when passing import.meta.glob() directly. Consider mapping the result to an array of RSSFeedItems. See the RSS docs for usage examples: https://docs.astro.build/en/guides/rss/#2-list-of-rss-feed-objects`
+					`[RSS] You can only glob entries within 'src/pages/' when passing import.meta.glob() directly. Consider mapping the result to an array of RSSFeedItems. See the RSS docs for usage examples: https://docs.astro.build/en/guides/rss/#2-list-of-rss-feed-objects`,
 				);
 			}
 			const parsedResult = rssSchema
@@ -151,11 +150,11 @@ export function pagesGlobToRssItems(items: GlobResult): Promise<ValidatedRSSFeed
 				[
 					`[RSS] ${filePath} has invalid or missing frontmatter.\nFix the following properties:`,
 					...parsedResult.error.errors.map((zodError) => zodError.message),
-				].join('\n')
+				].join('\n'),
 			);
 			(formattedError as any).file = filePath;
 			throw formattedError;
-		})
+		}),
 	);
 }
 
@@ -202,12 +201,12 @@ async function generateRSS(rssOptions: ValidatedRSSOptions): Promise<string> {
 	root.rss.channel = {
 		title: rssOptions.title,
 		description: rssOptions.description,
-		link: createCanonicalURL(site, rssOptions.trailingSlash, undefined).href,
+		link: createCanonicalURL(site, rssOptions.trailingSlash, undefined),
 	};
 	if (typeof rssOptions.customData === 'string')
 		Object.assign(
 			root.rss.channel,
-			parser.parse(`<channel>${rssOptions.customData}</channel>`).channel
+			parser.parse(`<channel>${rssOptions.customData}</channel>`).channel,
 		);
 	// items
 	root.rss.channel.item = items.map((result) => {
@@ -220,7 +219,7 @@ async function generateRSS(rssOptions: ValidatedRSSOptions): Promise<string> {
 			// If the item's link is already a valid URL, don't mess with it.
 			const itemLink = isValidURL(result.link)
 				? result.link
-				: createCanonicalURL(result.link, rssOptions.trailingSlash, site).href;
+				: createCanonicalURL(result.link, rssOptions.trailingSlash, site);
 			item.link = itemLink;
 			item.guid = { '#text': itemLink, '@_isPermaLink': 'true' };
 		}
@@ -246,19 +245,19 @@ async function generateRSS(rssOptions: ValidatedRSSOptions): Promise<string> {
 		if (typeof result.commentsUrl === 'string') {
 			item.comments = isValidURL(result.commentsUrl)
 				? result.commentsUrl
-				: createCanonicalURL(result.commentsUrl, rssOptions.trailingSlash, site).href;
+				: createCanonicalURL(result.commentsUrl, rssOptions.trailingSlash, site);
 		}
 		if (result.source) {
 			item.source = parser.parse(
-				`<source url="${result.source.url}">${result.source.title}</source>`
+				`<source url="${result.source.url}">${result.source.title}</source>`,
 			).source;
 		}
 		if (result.enclosure) {
 			const enclosureURL = isValidURL(result.enclosure.url)
 				? result.enclosure.url
-				: createCanonicalURL(result.enclosure.url, rssOptions.trailingSlash, site).href;
+				: createCanonicalURL(result.enclosure.url, rssOptions.trailingSlash, site);
 			item.enclosure = parser.parse(
-				`<enclosure url="${enclosureURL}" length="${result.enclosure.length}" type="${result.enclosure.type}"/>`
+				`<enclosure url="${enclosureURL}" length="${result.enclosure.length}" type="${result.enclosure.type}"/>`,
 			).enclosure;
 		}
 		return item;

@@ -1,5 +1,31 @@
 # @astrojs/rss
 
+## 4.0.9
+
+### Patch Changes
+
+- [#12157](https://github.com/withastro/astro/pull/12157) [`925cff3`](https://github.com/withastro/astro/commit/925cff31bc040874e73decd6a6b3a5ba84c60258) Thanks [@bholmesdev](https://github.com/bholmesdev)! - Improves README configuration reference.
+
+## 4.0.8
+
+### Patch Changes
+
+- [#12137](https://github.com/withastro/astro/pull/12137) [`50dd88b`](https://github.com/withastro/astro/commit/50dd88bc6611243e3f1b2df643af6d0b551fe140) Thanks [@ArmandPhilippot](https://github.com/ArmandPhilippot)! - Fixes an error that occurred when the optional `pubDate` property was missing in an item.
+
+- [#12137](https://github.com/withastro/astro/pull/12137) [`50dd88b`](https://github.com/withastro/astro/commit/50dd88bc6611243e3f1b2df643af6d0b551fe140) Thanks [@ArmandPhilippot](https://github.com/ArmandPhilippot)! - Fixes an error where docs incorrectly stated the `title`, `link` and `pubDate` properties of RSS items was required.
+
+## 4.0.7
+
+### Patch Changes
+
+- [#11299](https://github.com/withastro/astro/pull/11299) [`8ce66f2`](https://github.com/withastro/astro/commit/8ce66f2ef7328546d823f1076f9bab4217a6be7d) Thanks [@ematipico](https://github.com/ematipico)! - Fixes an issue where the `pagesGlobToRssItems` returned an incorrect type for `items`
+
+## 4.0.6
+
+### Patch Changes
+
+- [#11050](https://github.com/withastro/astro/pull/11050) [`841df1f`](https://github.com/withastro/astro/commit/841df1f1b192f39849509cda49b7243940cc30f9) Thanks [@mingjunlu](https://github.com/mingjunlu)! - Fixes an issue where trailing slash is not removed even if the `trailingSlash` option is set to `false`.
+
 ## 4.0.5
 
 ### Patch Changes

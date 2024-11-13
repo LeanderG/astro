@@ -1,5 +1,5 @@
-import { createRequire } from 'module';
 import * as fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { PartytownConfig } from '@builder.io/partytown/integration';
@@ -21,19 +21,19 @@ export default function createPlugin(options?: PartytownOptions): AstroIntegrati
 	let partytownSnippetHtml: string;
 	const partytownEntrypoint = resolve('@builder.io/partytown/package.json');
 	const partytownLibDirectory = path.resolve(partytownEntrypoint, '../lib');
-	const SELF_DESTRUCT_ON_VIEW_TRANSITION = `;((d,s)=>(s=d.currentScript,d.addEventListener('astro:before-swap',()=>s.remove(),{once:true})))(document);`;
 	return {
 		name: '@astrojs/partytown',
 		hooks: {
 			'astro:config:setup': ({ config: _config, command, injectScript }) => {
 				const lib = `${appendForwardSlash(_config.base)}~partytown/`;
+				const recreateIFrameScript = `;(e=>{e.addEventListener("astro:before-swap",e=>{let r=document.body.querySelector("iframe[src*='${lib}']");if(r)e.newDocument.body.append(r)})})(document);`;
 				const partytownConfig = {
 					lib,
 					...options?.config,
 					debug: options?.config?.debug ?? command === 'dev',
 				};
 				partytownSnippetHtml = partytownSnippet(partytownConfig);
-				partytownSnippetHtml += SELF_DESTRUCT_ON_VIEW_TRANSITION;
+				partytownSnippetHtml += recreateIFrameScript;
 				injectScript('head-inline', partytownSnippetHtml);
 			},
 			'astro:server:setup': ({ server }) => {
@@ -44,7 +44,7 @@ export default function createPlugin(options?: PartytownOptions): AstroIntegrati
 						dev: true,
 						etag: true,
 						extensions: [],
-					})
+					}),
 				);
 			},
 			'astro:build:done': async ({ dir }) => {

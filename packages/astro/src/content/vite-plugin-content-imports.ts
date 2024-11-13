@@ -15,6 +15,7 @@ import type {
 import { getProxyCode } from '../assets/utils/proxy.js';
 import { AstroError } from '../core/errors/errors.js';
 import { AstroErrorData } from '../core/errors/index.js';
+import type { Logger } from '../core/logger/core.js';
 import { isServerLikeOutput } from '../core/util.js';
 import { CONTENT_FLAG, DATA_FLAG } from './consts.js';
 import {
@@ -28,15 +29,17 @@ import {
 	getEntryConfigByExtMap,
 	getEntryData,
 	getEntryType,
+	getSymlinkedContentCollections,
 	globalContentConfigObserver,
 	hasContentFlag,
 	parseEntrySlug,
 	reloadContentConfigObserver,
+	reverseSymlink,
 } from './utils.js';
 
 function getContentRendererByViteId(
 	viteId: string,
-	settings: Pick<AstroSettings, 'contentEntryTypes'>
+	settings: Pick<AstroSettings, 'contentEntryTypes'>,
 ): ContentEntryType['getRenderModule'] | undefined {
 	let ext = viteId.split('.').pop();
 	if (!ext) return undefined;
@@ -63,9 +66,11 @@ const COLLECTION_TYPES_TO_INVALIDATE_ON = ['data', 'content', 'config'];
 export function astroContentImportPlugin({
 	fs,
 	settings,
+	logger,
 }: {
 	fs: typeof fsMod;
 	settings: AstroSettings;
+	logger: Logger;
 }): Plugin[] {
 	const contentPaths = getContentPaths(settings.config, fs);
 	const contentEntryExts = getContentEntryExts(settings);
@@ -75,16 +80,26 @@ export function astroContentImportPlugin({
 	const dataEntryConfigByExt = getEntryConfigByExtMap(settings.dataEntryTypes);
 	const { contentDir } = contentPaths;
 	let shouldEmitFile = false;
-
+	let symlinks: Map<string, string>;
 	const plugins: Plugin[] = [
 		{
 			name: 'astro:content-imports',
 			config(_config, env) {
 				shouldEmitFile = env.command === 'build';
 			},
+			async buildStart() {
+				// Get symlinks once at build start
+				symlinks = await getSymlinkedContentCollections({ contentDir, logger, fs });
+			},
 			async transform(_, viteId) {
 				if (hasContentFlag(viteId, DATA_FLAG)) {
-					const fileId = viteId.split('?')[0] ?? viteId;
+					// By default, Vite will resolve symlinks to their targets. We need to reverse this for
+					// content entries, so we can get the path relative to the content directory.
+					const fileId = reverseSymlink({
+						entry: viteId.split('?')[0] ?? viteId,
+						contentDir,
+						symlinks,
+					});
 					// Data collections don't need to rely on the module cache.
 					// This cache only exists for the `render()` function specific to content.
 					const { id, data, collection, _internal } = await getDataEntryModule({
@@ -109,7 +124,7 @@ export const _internal = {
 `;
 					return code;
 				} else if (hasContentFlag(viteId, CONTENT_FLAG)) {
-					const fileId = viteId.split('?')[0];
+					const fileId = reverseSymlink({ entry: viteId.split('?')[0], contentDir, symlinks });
 					const { id, slug, collection, body, data, _internal } = await getContentEntryModule({
 						fileId,
 						entryConfigByExt: contentEntryConfigByExt,
@@ -143,6 +158,7 @@ export const _internal = {
 
 						// The content config could depend on collection entries via `reference()`.
 						// Reload the config in case of changes.
+						// Changes to the config file itself are handled in types-generator.ts, so we skip them here
 						if (entryType === 'content' || entryType === 'data') {
 							await reloadContentConfigObserver({ fs, settings, viteServer });
 						}
@@ -200,7 +216,7 @@ type GetEntryModuleParams<TEntryType extends ContentEntryType | DataEntryType> =
 };
 
 async function getContentEntryModule(
-	params: GetEntryModuleParams<ContentEntryType>
+	params: GetEntryModuleParams<ContentEntryType>,
 ): Promise<ContentEntryModule> {
 	const { fileId, contentDir, pluginContext } = params;
 	const { collectionConfig, entryConfig, entry, rawContents, collection } =
@@ -230,7 +246,7 @@ async function getContentEntryModule(
 				{ id, collection, _internal, unvalidatedData },
 				collectionConfig,
 				params.shouldEmitFile,
-				pluginContext
+				pluginContext,
 			)
 		: unvalidatedData;
 
@@ -247,7 +263,7 @@ async function getContentEntryModule(
 }
 
 async function getDataEntryModule(
-	params: GetEntryModuleParams<DataEntryType>
+	params: GetEntryModuleParams<DataEntryType>,
 ): Promise<DataEntryModule> {
 	const { fileId, contentDir, pluginContext } = params;
 	const { collectionConfig, entryConfig, entry, rawContents, collection } =
@@ -265,7 +281,7 @@ async function getDataEntryModule(
 				{ id, collection, _internal, unvalidatedData },
 				collectionConfig,
 				params.shouldEmitFile,
-				pluginContext
+				pluginContext,
 			)
 		: unvalidatedData;
 
@@ -305,7 +321,7 @@ async function getEntryModuleBaseInfo<TEntryType extends ContentEntryType | Data
 		throw new AstroError({
 			...AstroErrorData.UnknownContentCollectionError,
 			message: `No parser found for data entry ${JSON.stringify(
-				fileId
+				fileId,
 			)}. Did you apply an integration for this file type?`,
 		});
 	}

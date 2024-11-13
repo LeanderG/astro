@@ -1,3 +1,4 @@
+import { LibsqlError } from '@libsql/client';
 import { AstroError } from 'astro/errors';
 
 const isWindows = process?.platform === 'win32';
@@ -10,7 +11,7 @@ export async function safeFetch(
 	options: Parameters<typeof fetch>[1] = {},
 	onNotOK: (response: Response) => void | Promise<void> = () => {
 		throw new Error(`Request to ${url} returned a non-OK status code.`);
-	}
+	},
 ): Promise<Response> {
 	const response = await fetch(url, options);
 
@@ -23,6 +24,22 @@ export async function safeFetch(
 
 export class AstroDbError extends AstroError {
 	name = 'Astro DB Error';
+}
+
+export class DetailedLibsqlError extends LibsqlError {
+	name = 'Astro DB Error';
+	hint?: string;
+
+	constructor({
+		message,
+		code,
+		hint,
+		rawCode,
+		cause,
+	}: { message: string; code: string; hint?: string; rawCode?: number; cause?: Error }) {
+		super(message, code, rawCode, cause);
+		this.hint = hint;
+	}
 }
 
 function slash(path: string) {

@@ -70,6 +70,13 @@ describe('Middleware in DEV mode', () => {
 		assert.equal($('title').html(), 'MiddlewareNoDataOrNextCalled');
 	});
 
+	it('should return 200 if the middleware returns a 200 Response', async () => {
+		const response = await fixture.fetch('/no-route-but-200');
+		assert.equal(response.status, 200);
+		const html = await response.text();
+		assert.match(html, /It's OK!/);
+	});
+
 	it('should allow setting cookies', async () => {
 		const res = await fixture.fetch('/');
 		assert.equal(res.headers.get('set-cookie'), 'foo=bar');
@@ -239,6 +246,14 @@ describe('Middleware API in PROD mode, SSR', () => {
 		assert.notEqual($('title').html(), 'MiddlewareNoDataReturned');
 	});
 
+	it('should return 200 if the middleware returns a 200 Response', async () => {
+		const request = new Request('http://example.com/no-route-but-200');
+		const response = await app.render(request);
+		assert.equal(response.status, 200);
+		const html = await response.text();
+		assert.match(html, /It's OK!/);
+	});
+
 	it('should correctly work for API endpoints that return a Response object', async () => {
 		const request = new Request('http://example.com/api/endpoint');
 		const response = await app.render(request);
@@ -266,7 +281,7 @@ describe('Middleware API in PROD mode, SSR', () => {
 		const request = new Request('http://example.com/throw');
 		const routeData = app.match(request);
 
-		const response = await app.render(request, routeData);
+		const response = await app.render(request, { routeData });
 		assert.equal(response.status, 500);
 
 		const text = await response.text();
@@ -313,7 +328,7 @@ describe('Middleware API in PROD mode, SSR', () => {
 			assert.equal(existsSync(path), true);
 			const content = readFileSync(fileURLToPath(middlewarePath), 'utf-8');
 			assert.equal(content.length > 0, true);
-		} catch (e) {
+		} catch {
 			assert.fail();
 		}
 	});
@@ -375,5 +390,5 @@ describe(
 			const $ = cheerio.load(html);
 			assert.equal($('p').html(), 'bar');
 		});
-	}
+	},
 );

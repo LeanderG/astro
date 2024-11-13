@@ -11,7 +11,11 @@ import {
 	getTopLevelPageModuleInfos,
 	moduleIsTopLevelPage,
 } from '../graph.js';
-import { getPageDataByViteID, trackClientOnlyPageDatas } from '../internal.js';
+import {
+	getPageDataByViteID,
+	trackClientOnlyPageDatas,
+	trackScriptPageDatas,
+} from '../internal.js';
 import type { StaticBuildOptions } from '../types.js';
 
 function isPropagatedAsset(id: string) {
@@ -24,11 +28,11 @@ function isPropagatedAsset(id: string) {
 
 export function vitePluginAnalyzer(
 	options: StaticBuildOptions,
-	internals: BuildInternals
+	internals: BuildInternals,
 ): VitePlugin {
 	function hoistedScriptScanner() {
 		const uniqueHoistedIds = new Map<string, string>();
-		const pageScripts = new Map<
+		const pageScriptsMap = new Map<
 			string,
 			{
 				hoistedSet: Set<string>;
@@ -39,7 +43,7 @@ export function vitePluginAnalyzer(
 			async scan(
 				this: PluginContext,
 				scripts: AstroPluginMetadata['astro']['scripts'],
-				from: string
+				from: string,
 			) {
 				const hoistedScripts = new Set<string>();
 				for (let i = 0; i < scripts.length; i++) {
@@ -50,15 +54,22 @@ export function vitePluginAnalyzer(
 				if (hoistedScripts.size) {
 					for (const parentInfo of getParentModuleInfos(from, this, isPropagatedAsset)) {
 						if (isPropagatedAsset(parentInfo.id)) {
-							internals.propagatedScriptsMap.set(parentInfo.id, hoistedScripts);
-						} else if (moduleIsTopLevelPage(parentInfo)) {
+							if (!internals.propagatedScriptsMap.has(parentInfo.id)) {
+								internals.propagatedScriptsMap.set(parentInfo.id, new Set());
+							}
+							const propagatedScripts = internals.propagatedScriptsMap.get(parentInfo.id)!;
 							for (const hid of hoistedScripts) {
-								if (!pageScripts.has(parentInfo.id)) {
-									pageScripts.set(parentInfo.id, {
-										hoistedSet: new Set(),
-									});
-								}
-								pageScripts.get(parentInfo.id)?.hoistedSet.add(hid);
+								propagatedScripts.add(hid);
+							}
+						} else if (moduleIsTopLevelPage(parentInfo)) {
+							if (!pageScriptsMap.has(parentInfo.id)) {
+								pageScriptsMap.set(parentInfo.id, {
+									hoistedSet: new Set(),
+								});
+							}
+							const pageScripts = pageScriptsMap.get(parentInfo.id)!;
+							for (const hid of hoistedScripts) {
+								pageScripts.hoistedSet.add(hid);
 							}
 						}
 					}
@@ -74,7 +85,7 @@ export function vitePluginAnalyzer(
 					}
 				}
 
-				for (const [pageId, { hoistedSet }] of pageScripts) {
+				for (const [pageId, { hoistedSet }] of pageScriptsMap) {
 					const pageData = getPageDataByViteID(internals, pageId);
 					if (!pageData) continue;
 
@@ -122,11 +133,6 @@ export function vitePluginAnalyzer(
 
 				const astro = info.meta.astro as AstroPluginMetadata['astro'];
 
-				const pageData = getPageDataByViteID(internals, id);
-				if (pageData) {
-					internals.pageOptionsByPage.set(id, astro.pageOptions);
-				}
-
 				for (const c of astro.hydratedComponents) {
 					const rid = c.resolvedPath ? decodeURI(c.resolvedPath) : c.specifier;
 					if (internals.discoveredHydratedComponents.has(rid)) {
@@ -171,9 +177,21 @@ export function vitePluginAnalyzer(
 				// each script module is its own entrypoint, so we directly assign each script modules to
 				// `discoveredScripts` here, which will eventually be passed as inputs of the client build.
 				if (options.settings.config.experimental.directRenderScript && astro.scripts.length) {
-					for (let i = 0; i < astro.scripts.length; i++) {
-						const hid = `${id.replace('/@fs', '')}?astro&type=script&index=${i}&lang.ts`;
-						internals.discoveredScripts.add(hid);
+					const scriptIds = astro.scripts.map(
+						(_, i) => `${id.replace('/@fs', '')}?astro&type=script&index=${i}&lang.ts`,
+					);
+
+					// Assign as entrypoints for the client bundle
+					for (const scriptId of scriptIds) {
+						internals.discoveredScripts.add(scriptId);
+					}
+
+					// The script may import CSS, so we also have to track the pages that use this script
+					for (const pageInfo of getTopLevelPageModuleInfos(id, this)) {
+						const newPageData = getPageDataByViteID(internals, pageInfo.id);
+						if (!newPageData) continue;
+
+						trackScriptPageDatas(internals, newPageData, scriptIds);
 					}
 				}
 			}
@@ -186,7 +204,7 @@ export function vitePluginAnalyzer(
 
 export function pluginAnalyzer(
 	options: StaticBuildOptions,
-	internals: BuildInternals
+	internals: BuildInternals,
 ): AstroBuildPlugin {
 	return {
 		targets: ['server'],

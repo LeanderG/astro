@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/ban-types */
-import type { WithRequired } from '../type-utils.js';
+import type { OmitPreservingIndexSignature, Simplify, WithRequired } from '../type-utils.js';
 import type { VALID_INPUT_FORMATS, VALID_OUTPUT_FORMATS } from './consts.js';
 import type { ImageService } from './services/service.js';
 
@@ -28,10 +27,14 @@ declare global {
 	};
 }
 
+const isESMImport = Symbol('#isESM');
+
+export type OmitBrand<T> = Omit<T, typeof isESMImport>;
+
 /**
  * Type returned by ESM imports of images
  */
-export interface ImageMetadata {
+export type ImageMetadata = {
 	src: string;
 	width: number;
 	height: number;
@@ -39,6 +42,12 @@ export interface ImageMetadata {
 	orientation?: number;
 	/** @internal */
 	fsPath: string;
+	[isESMImport]?: true;
+};
+
+export function isImageMetadata(src: any): src is ImageMetadata {
+	// For ESM-imported images the fsPath property is set but not enumerable
+	return src.fsPath && !('fsPath' in src);
 }
 
 /**
@@ -57,9 +66,13 @@ export type SrcSetValue = UnresolvedSrcSetValue & {
 /**
  * A yet to be resolved image transform. Used by `getImage`
  */
-export type UnresolvedImageTransform = Omit<ImageTransform, 'src'> & {
-	src: ImageMetadata | string | Promise<{ default: ImageMetadata }>;
-	inferSize?: boolean;
+export type UnresolvedImageTransform = Simplify<
+	OmitPreservingIndexSignature<ImageTransform, 'src'> & {
+		src: ImageMetadata | string | Promise<{ default: ImageMetadata }>;
+		inferSize?: boolean;
+	}
+> & {
+	[isESMImport]?: never;
 };
 
 /**

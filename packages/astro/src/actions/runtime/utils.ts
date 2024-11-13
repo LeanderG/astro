@@ -1,3 +1,7 @@
+import type { APIContext } from '../../@types/astro.js';
+
+export const ACTION_API_CONTEXT_SYMBOL = Symbol.for('astro.actionAPIContext');
+
 export const formContentTypes = ['application/x-www-form-urlencoded', 'multipart/form-data'];
 
 export function hasContentType(contentType: string, expected: string[]) {
@@ -8,20 +12,24 @@ export function hasContentType(contentType: string, expected: string[]) {
 	return expected.some((t) => type === t);
 }
 
+export type ActionAPIContext = Omit<
+	APIContext,
+	'getActionResult' | 'callAction' | 'props' | 'redirect'
+>;
 export type MaybePromise<T> = T | Promise<T>;
 
-export async function getAction(
-	pathKeys: string[]
-): Promise<(param: unknown) => MaybePromise<unknown>> {
-	let { server: actionLookup } = await import(import.meta.env.ACTIONS_PATH);
-	for (const key of pathKeys) {
-		if (!(key in actionLookup)) {
-			throw new Error('Action not found');
-		}
-		actionLookup = actionLookup[key];
-	}
-	if (typeof actionLookup !== 'function') {
-		throw new Error('Action not found');
-	}
-	return actionLookup;
+/**
+ * Used to preserve the input schema type in the error object.
+ * This allows for type inference on the `fields` property
+ * when type narrowed to an `ActionInputError`.
+ *
+ * Example: Action has an input schema of `{ name: z.string() }`.
+ * When calling the action and checking `isInputError(result.error)`,
+ * `result.error.fields` will be typed with the `name` field.
+ */
+export type ErrorInferenceObject = Record<string, any>;
+
+export function isActionAPIContext(ctx: ActionAPIContext): boolean {
+	const symbol = Reflect.get(ctx, ACTION_API_CONTEXT_SYMBOL);
+	return symbol === true;
 }

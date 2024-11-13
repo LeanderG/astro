@@ -14,6 +14,11 @@ describe('Assets Prefix - Static', () => {
 	before(async () => {
 		fixture = await loadFixture({
 			root: './fixtures/astro-assets-prefix/',
+			outDir: './dist/static',
+			build: {
+				client: './dist/static/client',
+				server: './dist/static/server',
+			},
 		});
 		await fixture.build();
 	});
@@ -22,7 +27,7 @@ describe('Assets Prefix - Static', () => {
 		const html = await fixture.readFile('/index.html');
 		const $ = cheerio.load(html);
 		const stylesheets = $('link[rel="stylesheet"]');
-		stylesheets.each((i, el) => {
+		stylesheets.each((_i, el) => {
 			assert.match(el.attribs.href, assetsPrefixRegex);
 		});
 	});
@@ -53,7 +58,7 @@ describe('Assets Prefix - Static', () => {
 		const html = await fixture.readFile('/markdown/index.html');
 		const $ = cheerio.load(html);
 		const imgAssets = $('img');
-		imgAssets.each((i, el) => {
+		imgAssets.each((_i, el) => {
 			assert.match(el.attribs.src, assetsPrefixRegex);
 		});
 	});
@@ -72,7 +77,10 @@ describe('Assets Prefix - with path prefix', () => {
 	before(async () => {
 		fixture = await loadFixture({
 			root: './fixtures/astro-assets-prefix/',
+			outDir: './dist/server',
 			build: {
+				client: './dist/server/client',
+				server: './dist/server/server',
 				assetsPrefix: '/starting-slash',
 			},
 		});
@@ -83,7 +91,7 @@ describe('Assets Prefix - with path prefix', () => {
 		const html = await fixture.readFile('/index.html');
 		const $ = cheerio.load(html);
 		const stylesheets = $('link[rel="stylesheet"]');
-		stylesheets.each((i, el) => {
+		stylesheets.each((_i, el) => {
 			assert.match(el.attribs.href, /^\/starting-slash\/.*/);
 		});
 	});
@@ -97,6 +105,11 @@ describe('Assets Prefix, server', () => {
 			root: './fixtures/astro-assets-prefix/',
 			output: 'server',
 			adapter: testAdapter(),
+			outDir: './dist/server',
+			build: {
+				client: './dist/server/client',
+				server: './dist/server/server',
+			},
 		});
 		await fixture.build();
 		app = await fixture.loadTestAdapterApp();
@@ -109,7 +122,7 @@ describe('Assets Prefix, server', () => {
 		const html = await response.text();
 		const $ = cheerio.load(html);
 		const stylesheets = $('link[rel="stylesheet"]');
-		stylesheets.each((i, el) => {
+		stylesheets.each((_i, el) => {
 			assert.match(el.attribs.href, assetsPrefixRegex);
 		});
 	});
@@ -154,7 +167,10 @@ describe('Assets Prefix, with path prefix', () => {
 			root: './fixtures/astro-assets-prefix/',
 			output: 'server',
 			adapter: testAdapter(),
+			outDir: './dist/server-path-prefix',
 			build: {
+				client: './dist/server-path-prefix/client',
+				server: './dist/server-path-prefix/server',
 				assetsPrefix: '/starting-slash',
 			},
 		});
@@ -169,7 +185,7 @@ describe('Assets Prefix, with path prefix', () => {
 		const html = await response.text();
 		const $ = cheerio.load(html);
 		const stylesheets = $('link[rel="stylesheet"]');
-		stylesheets.each((i, el) => {
+		stylesheets.each((_i, el) => {
 			assert.match(el.attribs.href, /^\/starting-slash\/.*/);
 		});
 	});

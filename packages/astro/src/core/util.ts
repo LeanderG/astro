@@ -1,11 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { normalizePath } from 'vite';
 import type { AstroConfig, AstroSettings, RouteType } from '../@types/astro.js';
 import { SUPPORTED_MARKDOWN_FILE_EXTENSIONS } from './constants.js';
-import type { ModuleLoader } from './module-loader/index.js';
-import { prependForwardSlash, removeTrailingForwardSlash, slash } from './path.js';
+import { removeTrailingForwardSlash, slash } from './path.js';
 
 /** Returns true if argument is an object of any prototype/class (but not null). */
 export function isObject(value: unknown): value is Record<string, any> {
@@ -57,7 +55,7 @@ export function getOutputFilename(astroConfig: AstroConfig, name: string, type: 
 
 /** is a specifier an npm package? */
 export function parseNpmName(
-	spec: string
+	spec: string,
 ): { scope?: string; name: string; subpath?: string } | undefined {
 	// not an npm package
 	if (!spec || spec[0] === '.' || spec[0] === '/') return undefined;
@@ -120,11 +118,22 @@ function isInjectedRoute(file: URL, settings: AstroSettings) {
 }
 
 function isPublicRoute(file: URL, config: AstroConfig): boolean {
-	const pagesDir = resolvePages(config);
-	const parts = file.toString().replace(pagesDir.toString(), '').split('/').slice(1);
+	const rootDir = config.root.toString();
+	const pagesDir = resolvePages(config).toString();
+	const fileDir = file.toString();
+
+	// Normalize the file directory path by removing the pagesDir prefix if it exists,
+	// otherwise remove the rootDir prefix.
+	const normalizedDir = fileDir.startsWith(pagesDir)
+		? fileDir.slice(pagesDir.length)
+		: fileDir.slice(rootDir.length);
+
+	const parts = normalizedDir.replace(pagesDir.toString(), '').split('/').slice(1);
+
 	for (const part of parts) {
 		if (part.startsWith('_')) return false;
 	}
+
 	return true;
 }
 
@@ -142,9 +151,9 @@ export function isPage(file: URL, settings: AstroSettings): boolean {
 }
 
 export function isEndpoint(file: URL, settings: AstroSettings): boolean {
-	if (!isInPagesDir(file, settings.config)) return false;
+	if (!isInPagesDir(file, settings.config) && !isInjectedRoute(file, settings)) return false;
 	if (!isPublicRoute(file, settings.config)) return false;
-	return !endsWithPageExt(file, settings);
+	return !endsWithPageExt(file, settings) && !file.toString().includes('?astro');
 }
 
 export function isServerLikeOutput(config: AstroConfig) {
@@ -163,64 +172,6 @@ export function isContentCollectionsCacheEnabled(config: AstroConfig): boolean {
 	);
 }
 
-export function relativeToSrcDir(config: AstroConfig, idOrUrl: URL | string) {
-	let id: string;
-	if (typeof idOrUrl !== 'string') {
-		id = unwrapId(viteID(idOrUrl));
-	} else {
-		id = idOrUrl;
-	}
-	return id.slice(slash(fileURLToPath(config.srcDir)).length);
-}
-
-export function rootRelativePath(
-	root: URL,
-	idOrUrl: URL | string,
-	shouldPrependForwardSlash = true
-) {
-	let id: string;
-	if (typeof idOrUrl !== 'string') {
-		id = unwrapId(viteID(idOrUrl));
-	} else {
-		id = idOrUrl;
-	}
-	const normalizedRoot = normalizePath(fileURLToPath(root));
-	if (id.startsWith(normalizedRoot)) {
-		id = id.slice(normalizedRoot.length);
-	}
-	return shouldPrependForwardSlash ? prependForwardSlash(id) : id;
-}
-
-export function emoji(char: string, fallback: string) {
-	return process.platform !== 'win32' ? char : fallback;
-}
-
-/**
- * Simulate Vite's resolve and import analysis so we can import the id as an URL
- * through a script tag or a dynamic import as-is.
- */
-// NOTE: `/@id/` should only be used when the id is fully resolved
-export async function resolveIdToUrl(loader: ModuleLoader, id: string, root?: URL) {
-	let resultId = await loader.resolveId(id, undefined);
-	// Try resolve jsx to tsx
-	if (!resultId && id.endsWith('.jsx')) {
-		resultId = await loader.resolveId(id.slice(0, -4), undefined);
-	}
-	if (!resultId) {
-		return VALID_ID_PREFIX + id;
-	}
-	if (path.isAbsolute(resultId)) {
-		const normalizedRoot = root && normalizePath(fileURLToPath(root));
-		// Convert to root-relative path if path is inside root
-		if (normalizedRoot && resultId.startsWith(normalizedRoot)) {
-			return resultId.slice(normalizedRoot.length - 1);
-		} else {
-			return '/@fs' + prependForwardSlash(resultId);
-		}
-	}
-	return VALID_ID_PREFIX + resultId;
-}
-
 export function resolveJsToTs(filePath: string) {
 	if (filePath.endsWith('.jsx') && !fs.existsSync(filePath)) {
 		const tryPath = filePath.slice(0, -4) + '.tsx';
@@ -229,18 +180,6 @@ export function resolveJsToTs(filePath: string) {
 		}
 	}
 	return filePath;
-}
-
-/**
- * Resolve the hydration paths so that it can be imported in the client
- */
-export function resolvePath(specifier: string, importer: string) {
-	if (specifier.startsWith('.')) {
-		const absoluteSpecifier = path.resolve(path.dirname(importer), specifier);
-		return resolveJsToTs(normalizePath(absoluteSpecifier));
-	} else {
-		return specifier;
-	}
 }
 
 /**

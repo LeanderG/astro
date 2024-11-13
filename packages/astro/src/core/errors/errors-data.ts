@@ -33,25 +33,7 @@ export const UnknownCompilerError = {
 	title: 'Unknown compiler error.',
 	hint: 'This is almost always a problem with the Astro compiler, not your code. Please open an issue at https://astro.build/issues/compiler.',
 } satisfies ErrorData;
-// 1xxx and 2xxx codes are reserved for compiler errors and warnings respectively
-/**
- * @docs
- * @see
- * - [Enabling SSR in Your Project](https://docs.astro.build/en/guides/server-side-rendering/)
- * - [Astro.redirect](https://docs.astro.build/en/reference/api-reference/#astroredirect)
- * @description
- * The `Astro.redirect` function is only available when [Server-side rendering](/en/guides/server-side-rendering/) is enabled.
- *
- * To redirect on a static website, the [meta refresh attribute](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta) can be used. Certain hosts also provide config-based redirects (ex: [Netlify redirects](https://docs.netlify.com/routing/redirects/)).
- * @deprecated Deprecated since version 2.6.
- */
-export const StaticRedirectNotAvailable = {
-	name: 'StaticRedirectNotAvailable',
-	title: '`Astro.redirect` is not available in static mode.',
-	message:
-		"Redirects are only available when using `output: 'server'` or `output: 'hybrid'`. Update your Astro config if you need SSR features.",
-	hint: 'See https://docs.astro.build/en/guides/server-side-rendering/ for more information on how to enable SSR.',
-} satisfies ErrorData;
+
 /**
  * @docs
  * @see
@@ -175,7 +157,7 @@ export const NoMatchingRenderer = {
 		componentName: string,
 		componentExtension: string | undefined,
 		plural: boolean,
-		validRenderersCount: number
+		validRenderersCount: number,
 	) =>
 		`Unable to render \`${componentName}\`.
 
@@ -302,21 +284,6 @@ export const InvalidGetStaticPathsReturn = {
 	hint: 'See https://docs.astro.build/en/reference/api-reference/#getstaticpaths for more information on getStaticPaths.',
 } satisfies ErrorData;
 
-/**
- * @docs
- * @deprecated Deprecated since Astro 4.0. The RSS helper no longer exists with an error fallback.
- * @see
- * - [RSS Guide](https://docs.astro.build/en/guides/rss/)
- * @description
- * `getStaticPaths` no longer expose an helper for generating a RSS feed. We recommend migrating to the [@astrojs/rss](https://docs.astro.build/en/guides/rss/#setting-up-astrojsrss)integration instead.
- */
-export const GetStaticPathsRemovedRSSHelper = {
-	name: 'GetStaticPathsRemovedRSSHelper',
-	title: 'getStaticPaths RSS helper is not available anymore.',
-	message:
-		'The RSS helper has been removed from `getStaticPaths`. Try the new @astrojs/rss package instead.',
-	hint: 'See https://docs.astro.build/en/guides/rss/ for more information.',
-} satisfies ErrorData;
 /**
  * @docs
  * @see
@@ -494,8 +461,8 @@ export const PageNumberParamNotFound = {
  * @docs
  * @see
  * - [Images](https://docs.astro.build/en/guides/images/)
- * - [Image component](https://docs.astro.build/en/guides/images/#image--astroassets)
- * - [Image component#alt](https://docs.astro.build/en/guides/images/#alt-required)
+ * - [Image component](https://docs.astro.build/en/reference/modules/astro-assets/#image-)
+ * - [Image component#alt](https://docs.astro.build/en/reference/modules/astro-assets/#alt-required)
  * @description
  * The `alt` property allows you to provide descriptive alt text to users of screen readers and other assistive technologies. In order to ensure your images are accessible, the `Image` component requires that an `alt` be specified.
  *
@@ -529,9 +496,9 @@ export const InvalidImageService = {
  * Missing width and height attributes for `IMAGE_URL`. When using remote images, both dimensions are required in order to avoid cumulative layout shift (CLS).
  * @see
  * - [Images](https://docs.astro.build/en/guides/images/)
- * - [Image component#width-and-height-required](https://docs.astro.build/en/guides/images/#width-and-height-required-for-images-in-public)
+ * - [Image component#width-and-height-required](https://docs.astro.build/en/reference/modules/astro-assets/#width-and-height-required-for-images-in-public)
  * @description
- * For remote images, `width` and `height` cannot automatically be inferred from the original file. To avoid cumulative layout shift (CLS), either specify these two properties, or set [`inferSize`](https://docs.astro.build/en/guides/images/#infersize) to `true` to fetch a remote image's original dimensions.
+ * For remote images, `width` and `height` cannot automatically be inferred from the original file. To avoid cumulative layout shift (CLS), either specify these two properties, or set [`inferSize`](https://docs.astro.build/en/reference/modules/astro-assets/#infersize) to `true` to fetch a remote image's original dimensions.
  *
  * If your image is inside your `src` folder, you probably meant to import it instead. See [the Imports guide for more information](https://docs.astro.build/en/guides/imports/#other-assets).
  */
@@ -541,7 +508,7 @@ export const MissingImageDimension = {
 	message: (missingDimension: 'width' | 'height' | 'both', imageURL: string) =>
 		`Missing ${
 			missingDimension === 'both' ? 'width and height attributes' : `${missingDimension} attribute`
-		} for ${imageURL}. When using remote images, both dimensions are required unless in order to avoid CLS.`,
+		} for ${imageURL}. When using remote images, both dimensions are required in order to avoid CLS.`,
 	hint: 'If your image is inside your `src` folder, you probably meant to import it instead. See [the Imports guide for more information](https://docs.astro.build/en/guides/imports/#other-assets). You can also use `inferSize={true}` for remote images to get the original dimensions.',
 } satisfies ErrorData;
 /**
@@ -576,7 +543,7 @@ export const UnsupportedImageFormat = {
 	title: 'Unsupported image format',
 	message: (format: string, imagePath: string, supportedFormats: readonly string[]) =>
 		`Received unsupported format \`${format}\` from \`${imagePath}\`. Currently only ${supportedFormats.join(
-			', '
+			', ',
 		)} are supported by our image services.`,
 	hint: "Using an `img` tag directly instead of the `Image` component might be what you're looking for.",
 } satisfies ErrorData;
@@ -667,6 +634,29 @@ export const ExpectedImageOptions = {
  * @see
  * - [Images](https://docs.astro.build/en/guides/images/)
  * @description
+ * An ESM-imported image cannot be passed directly to `getImage()`. Instead, pass an object with the image in the `src` property.
+ *
+ * ```diff
+ * import { getImage } from "astro:assets";
+ * import myImage from "../assets/my_image.png";
+ * - const optimizedImage = await getImage( myImage );
+ * + const optimizedImage = await getImage({ src: myImage });
+ * ```
+ */
+
+export const ExpectedNotESMImage = {
+	name: 'ExpectedNotESMImage',
+	title: 'Expected image options, not an ESM-imported image.',
+	message:
+		'An ESM-imported image cannot be passed directly to `getImage()`. Instead, pass an object with the image in the `src` property.',
+	hint: 'Try changing `getImage(myImage)` to `getImage({ src: myImage })`',
+} satisfies ErrorData;
+
+/**
+ * @docs
+ * @see
+ * - [Images](https://docs.astro.build/en/guides/images/)
+ * @description
  * Only one of `densities` or `widths` can be specified. Those attributes are used to construct a `srcset` attribute, which cannot have both `x` and `w` descriptors.
  */
 export const IncompatibleDescriptorOptions = {
@@ -707,28 +697,6 @@ export const NoImageMetadata = {
 	message: (imagePath: string | undefined) =>
 		`Could not process image metadata${imagePath ? ` for \`${imagePath}\`` : ''}.`,
 	hint: 'This is often caused by a corrupted or malformed image. Re-exporting the image from your image editor may fix this issue.',
-} satisfies ErrorData;
-
-/**
- * @docs
- * @deprecated This error is no longer Markdown specific and as such, as been replaced by `ImageNotFound`
- * @message
- * Could not find requested image `IMAGE_PATH` at `FULL_IMAGE_PATH`.
- * @see
- * - [Images](https://docs.astro.build/en/guides/images/)
- * @description
- * Astro could not find an image you included in your Markdown content. Usually, this is simply caused by a typo in the path.
- *
- * Images in Markdown are relative to the current file. To refer to an image that is located in the same folder as the `.md` file, the path should start with `./`
- */
-export const MarkdownImageNotFound = {
-	name: 'MarkdownImageNotFound',
-	title: 'Image not found.',
-	message: (imagePath: string, fullImagePath: string | undefined) =>
-		`Could not find requested image \`${imagePath}\`${
-			fullImagePath ? ` at \`${fullImagePath}\`.` : '.'
-		}`,
-	hint: 'This is often caused by a typo in the image path. Please make sure the file exists, and is spelled correctly.',
 } satisfies ErrorData;
 
 /**
@@ -920,14 +888,14 @@ export const LocalImageUsedWrongly = {
  * @see
  * - [Astro.glob](https://docs.astro.build/en/reference/api-reference/#astroglob)
  * @description
- * `Astro.glob()` can only be used in `.astro` files. You can use [`import.meta.glob()`](https://vitejs.dev/guide/features.html#glob-import) instead to achieve the same result.
+ * `Astro.glob()` can only be used in `.astro` files. You can use [`import.meta.glob()`](https://vite.dev/guide/features.html#glob-import) instead to achieve the same result.
  */
 export const AstroGlobUsedOutside = {
 	name: 'AstroGlobUsedOutside',
 	title: 'Astro.glob() used outside of an Astro file.',
 	message: (globStr: string) =>
 		`\`Astro.glob(${globStr})\` can only be used in \`.astro\` files. \`import.meta.glob(${globStr})\` can be used instead to achieve a similar result.`,
-	hint: "See Vite's documentation on `import.meta.glob` for more information: https://vitejs.dev/guide/features.html#glob-import",
+	hint: "See Vite's documentation on `import.meta.glob` for more information: https://vite.dev/guide/features.html#glob-import",
 } satisfies ErrorData;
 
 /**
@@ -971,7 +939,6 @@ export const InvalidDynamicRoute = {
  * @docs
  * @see
  * - [Default Image Service](https://docs.astro.build/en/guides/images/#default-image-service)
- * - [Image Component](https://docs.astro.build/en/guides/images/#image--astroassets)
  * - [Image Services API](https://docs.astro.build/en/reference/image-service-reference/)
  * @description
  * Sharp is the default image service used for `astro:assets`. When using a [strict package manager](https://pnpm.io/pnpm-vs-npm#npms-flat-tree) like pnpm, Sharp must be installed manually into your project in order to use image processing.
@@ -999,7 +966,7 @@ export const MissingSharp = {
 /**
  * @docs
  * @see
- * - [Vite troubleshooting guide](https://vitejs.dev/guide/troubleshooting.html)
+ * - [Vite troubleshooting guide](https://vite.dev/guide/troubleshooting.html)
  * @description
  * Vite encountered an unknown error while rendering your project. We unfortunately do not know what happened (or we would tell you!)
  *
@@ -1172,13 +1139,95 @@ export const i18nNotEnabled = {
 /**
  * @docs
  * @description
+ * An i18n utility tried to use the locale from a URL path that does not contain one. You can prevent this error by using pathHasLocale to check URLs for a locale first before using i18n utilities.
  *
+ */
+export const i18nNoLocaleFoundInPath = {
+	name: 'i18nNoLocaleFoundInPath',
+	title: "The path doesn't contain any locale",
+	message:
+		"You tried to use an i18n utility on a path that doesn't contain any locale. You can use `pathHasLocale` first to determine if the path has a locale.",
+} satisfies ErrorData;
+
+/**
+ * @docs
+ * @description
  * Astro couldn't find a route matching the one provided by the user
  */
 export const RouteNotFound = {
 	name: 'RouteNotFound',
 	title: 'Route not found.',
 	message: `Astro could not find a route that matches the one you requested.`,
+} satisfies ErrorData;
+
+/**
+ * @docs
+ * @description
+ * Some environment variables do not match the data type and/or properties defined in `experimental.env.schema`.
+ * @message
+ * The following environment variables defined in `experimental.env.schema` are invalid.
+ */
+export const EnvInvalidVariables = {
+	name: 'EnvInvalidVariables',
+	title: 'Invalid Environment Variables',
+	message: (errors: Array<string>) =>
+		`The following environment variables defined in \`experimental.env.schema\` are invalid:\n\n${errors.map((err) => `- ${err}`).join('\n')}\n`,
+} satisfies ErrorData;
+
+/**
+ * @docs
+ * @description
+ * The `astro:env/server` exported function `getSecret()` is not supported by your adapter.
+ */
+export const EnvUnsupportedGetSecret = {
+	name: 'EnvUnsupportedGetSecret',
+	title: 'Unsupported astro:env getSecret',
+	message: '`astro:env/server` exported function `getSecret` is not supported by your adapter.',
+} satisfies ErrorData;
+
+/**
+ * @docs
+ * @description
+ * This module is only available server-side.
+ */
+export const ServerOnlyModule = {
+	name: 'ServerOnlyModule',
+	title: 'Module is only available server-side',
+	message: (name: string) => `The "${name}" module is only available server-side.`,
+} satisfies ErrorData;
+
+/**
+ * @docs
+ * @description
+ * `Astro.rewrite()` cannot be used if the request body has already been read. If you need to read the body, first clone the request. For example:
+ *
+ * ```js
+ * const data = await Astro.request.clone().formData();
+ *
+ * Astro.rewrite("/target")
+ * ```
+ *
+ * @see
+ * - [Request.clone()](https://developer.mozilla.org/en-US/docs/Web/API/Request/clone)
+ * - [Astro.rewrite](https://docs.astro.build/en/reference/api-reference/#astrorewrite)
+ */
+
+export const RewriteWithBodyUsed = {
+	name: 'RewriteWithBodyUsed',
+	title: 'Cannot use Astro.rewrite after the request body has been read',
+	message:
+		'Astro.rewrite() cannot be used if the request body has already been read. If you need to read the body, first clone the request.',
+} satisfies ErrorData;
+
+/**
+ * @docs
+ * @description
+ * An unknown error occurred while reading or writing files to disk. It can be caused by many things, eg. missing permissions or a file not existing we attempt to read.
+ */
+export const UnknownFilesystemError = {
+	name: 'UnknownFilesystemError',
+	title: 'An unknown error occurred while reading or writing files to disk.',
+	hint: 'It can be caused by many things, eg. missing permissions or a file not existing we attempt to read. Check the error cause for more details.',
 } satisfies ErrorData;
 
 /**
@@ -1339,7 +1388,7 @@ export const GenerateContentTypesError = {
 	title: 'Failed to generate content types.',
 	message: (errorMessage: string) =>
 		`\`astro sync\` command failed to generate content collection types: ${errorMessage}`,
-	hint: 'Check your `src/content/config.*` file for typos.',
+	hint: 'This error is often caused by a syntax error inside your content, or your content configuration file. Check your `src/content/config.*` file for typos.',
 } satisfies ErrorData;
 /**
  * @docs
@@ -1359,6 +1408,31 @@ export const UnknownContentCollectionError = {
 	name: 'UnknownContentCollectionError',
 	title: 'Unknown Content Collection Error.',
 } satisfies ErrorData;
+
+/**
+ * @docs
+ * @description
+ * Astro tried to render a content collection entry that was undefined. This can happen if you try to render an entry that does not exist.
+ */
+export const RenderUndefinedEntryError = {
+	name: 'RenderUndefinedEntryError',
+	title: 'Attempted to render an undefined content collection entry.',
+	hint: 'Check if the entry is undefined before passing it to `render()`',
+} satisfies ErrorData;
+
+/**
+ * @docs
+ * @description
+ * The `getDataEntryById` and `getEntryBySlug` functions are deprecated and cannot be used with content layer collections. Use the `getEntry` function instead.
+ */
+export const GetEntryDeprecationError = {
+	name: 'GetEntryDeprecationError',
+	title: 'Invalid use of `getDataEntryById` or `getEntryBySlug` function.',
+	message: (collection: string, method: string) =>
+		`The \`${method}\` function is deprecated and cannot be used to query the "${collection}" collection. Use \`getEntry\` instead.`,
+	hint: 'Use the `getEntry` or `getCollection` functions to query content layer collections.',
+} satisfies ErrorData;
+
 /**
  * @docs
  * @message
@@ -1378,7 +1452,7 @@ export const InvalidContentEntryFrontmatterError = {
 	message(collection: string, entryId: string, error: ZodError) {
 		return [
 			`**${String(collection)} → ${String(
-				entryId
+				entryId,
 			)}** frontmatter does not match collection schema.`,
 			...error.errors.map((zodError) => zodError.message),
 		].join('\n');
@@ -1398,7 +1472,7 @@ export const InvalidContentEntrySlugError = {
 	title: 'Invalid content entry slug.',
 	message(collection: string, entryId: string) {
 		return `${String(collection)} → ${String(
-			entryId
+			entryId,
 		)} has an invalid slug. \`slug\` must be a string.`;
 	},
 	hint: 'See https://docs.astro.build/en/guides/content-collections/ for more on the `slug` field.',
@@ -1418,20 +1492,6 @@ export const ContentSchemaContainsSlugError = {
 	hint: 'See https://docs.astro.build/en/guides/content-collections/ for more on the `slug` field.',
 } satisfies ErrorData;
 
-/**
- * @docs
- * @message A collection queried via `getCollection()` does not exist.
- * @deprecated Collections that do not exist no longer result in an error. A warning is given instead.
- * @description
- * When querying a collection, ensure a collection directory with the requested name exists under `src/content/`.
- */
-export const CollectionDoesNotExistError = {
-	name: 'CollectionDoesNotExistError',
-	title: 'Collection does not exist',
-	message: (collectionName: string) =>
-		`The collection **${collectionName}** does not exist. Ensure a collection directory with this name exists.`,
-	hint: 'See https://docs.astro.build/en/guides/content-collections/ for more on creating collections.',
-} satisfies ErrorData;
 /**
  * @docs
  * @see
@@ -1506,6 +1566,70 @@ export const UnsupportedConfigTransformError = {
 	message: (parseError: string) =>
 		`\`transform()\` functions in your content config must return valid JSON, or data types compatible with the devalue library (including Dates, Maps, and Sets).\nFull error: ${parseError}`,
 	hint: 'See the devalue library for all supported types: https://github.com/rich-harris/devalue',
+} satisfies ErrorData;
+
+/**
+ * @docs
+ * @kind heading
+ * @name Action Errors
+ */
+// Action Errors
+/**
+ * @docs
+ * @see
+ * - [On-demand rendering](https://docs.astro.build/en/basics/rendering-modes/#on-demand-rendered)
+ * @description
+ * Your project must have a server output to create backend functions with Actions.
+ */
+export const ActionsWithoutServerOutputError = {
+	name: 'ActionsWithoutServerOutputError',
+	title: 'Actions must be used with server output.',
+	message:
+		'Actions enabled without setting a server build output. A server is required to create callable backend functions. To deploy routes to a server, add a server adapter to your astro config.',
+	hint: 'Learn about on-demand rendering: https://docs.astro.build/en/basics/rendering-modes/#on-demand-rendered',
+} satisfies ErrorData;
+
+/**
+ * @docs
+ * @see
+ * - [Actions handler reference](https://docs.astro.build/en/reference/modules/astro-actions/#handler-property)
+ * @description
+ * Action handler returned invalid data. Handlers should return serializable data types, and cannot return a Response object.
+ */
+export const ActionsReturnedInvalidDataError = {
+	name: 'ActionsReturnedInvalidDataError',
+	title: 'Action handler returned invalid data.',
+	message: (error: string) =>
+		`Action handler returned invalid data. Handlers should return serializable data types like objects, arrays, strings, and numbers. Parse error: ${error}`,
+	hint: 'See the devalue library for all supported types: https://github.com/rich-harris/devalue',
+} satisfies ErrorData;
+
+/**
+ * @docs
+ * @description
+ * The server received a request for an action but could not find a match with the same name.
+ */
+export const ActionNotFoundError = {
+	name: 'ActionNotFoundError',
+	title: 'Action not found.',
+	message: (actionName: string) =>
+		`The server received a request for an action named \`${actionName}\` but could not find a match. If you renamed an action, check that you've updated your \`actions/index\` file and your calling code to match.`,
+	hint: 'You can run `astro check` to detect type errors caused by mismatched action names.',
+} satisfies ErrorData;
+
+/**
+ * @docs
+ * @see
+ * - [`Astro.callAction()` reference](https://docs.astro.build/en/reference/api-reference/#astrocallaction)
+ * @description
+ * Action called from a server page or endpoint without using `Astro.callAction()`.
+ */
+export const ActionCalledFromServerError = {
+	name: 'ActionCalledFromServerError',
+	title: 'Action unexpected called from the server.',
+	message:
+		'Action called from a server page or endpoint without using `Astro.callAction()`. This wrapper must be used to call actions from server code.',
+	hint: 'See the `Astro.callAction()` reference for usage examples: https://docs.astro.build/en/reference/api-reference/#astrocallaction',
 } satisfies ErrorData;
 
 // Generic catch-all - Only use this in extreme cases, like if there was a cosmic ray bit flip.

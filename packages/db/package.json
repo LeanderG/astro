@@ -1,6 +1,6 @@
 {
   "name": "@astrojs/db",
-  "version": "0.11.1",
+  "version": "0.14.3",
   "description": "Add libSQL and Astro Studio support to your Astro site",
   "license": "MIT",
   "repository": {
@@ -17,22 +17,22 @@
   "exports": {
     ".": {
       "types": "./index.d.ts",
-      "import": "./dist/index.js"
+      "default": "./dist/index.js"
     },
     "./utils": {
       "types": "./dist/utils.d.ts",
-      "import": "./dist/utils.js"
+      "default": "./dist/utils.js"
     },
     "./runtime": {
       "types": "./dist/runtime/index.d.ts",
-      "import": "./dist/runtime/index.js"
+      "default": "./dist/runtime/index.js"
     },
     "./dist/runtime/virtual.js": {
-      "import": "./dist/runtime/virtual.js"
+      "default": "./dist/runtime/virtual.js"
     },
     "./types": {
       "types": "./dist/core/types.d.ts",
-      "import": "./dist/core/types.js"
+      "default": "./dist/core/types.js"
     },
     "./package.json": "./package.json"
   },
@@ -66,38 +66,31 @@
     "build": "astro-scripts build \"src/**/*.ts\" && tsc && pnpm types:virtual",
     "build:ci": "astro-scripts build \"src/**/*.ts\"",
     "dev": "astro-scripts dev \"src/**/*.ts\"",
-    "test": "mocha --exit --timeout 20000 \"test/*.js\" \"test/unit/**/*.js\"",
-    "test:match": "mocha --timeout 20000 \"test/*.js\" \"test/unit/*.js\" -g"
+    "test": "astro-scripts test \"test/**/*.test.js\""
   },
   "dependencies": {
-    "@libsql/client": "^0.6.0",
+    "@astrojs/studio": "workspace:*",
+    "@libsql/client": "^0.14.0",
     "async-listen": "^3.0.1",
-    "ci-info": "^4.0.0",
     "deep-diff": "^1.0.2",
-    "drizzle-orm": "^0.30.10",
+    "drizzle-orm": "^0.31.2",
     "github-slugger": "^2.0.0",
     "kleur": "^4.1.5",
-    "nanoid": "^5.0.7",
+    "nanoid": "^5.0.8",
     "open": "^10.1.0",
-    "ora": "^8.0.1",
+    "ora": "^8.1.1",
     "prompts": "^2.4.2",
-    "strip-ansi": "^7.1.0",
     "yargs-parser": "^21.1.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@types/chai": "^4.3.16",
     "@types/deep-diff": "^1.0.5",
-    "@types/diff": "^5.2.1",
-    "@types/mocha": "^10.0.6",
     "@types/prompts": "^2.4.9",
     "@types/yargs-parser": "^21.0.3",
     "astro": "workspace:*",
     "astro-scripts": "workspace:*",
-    "chai": "^5.1.0",
-    "cheerio": "1.0.0-rc.12",
-    "mocha": "^10.4.0",
-    "typescript": "^5.4.5",
-    "vite": "^5.2.11"
+    "cheerio": "1.0.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
   }
 }

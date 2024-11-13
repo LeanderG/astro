@@ -1,34 +1,66 @@
+import { type ManagedAppToken, getAstroStudioEnv, getManagedAppTokenOrExit } from '@astrojs/studio';
 import type { AstroConfig, AstroIntegration } from 'astro';
 import { loadEnv } from 'vite';
-import type { AstroDbIntegration } from './types.js';
+import './types.js';
 
 export type VitePlugin = Required<AstroConfig['vite']>['plugins'][number];
-
-export function getAstroStudioEnv(envMode = ''): Record<`ASTRO_STUDIO_${string}`, string> {
-	const env = loadEnv(envMode, process.cwd(), 'ASTRO_STUDIO_');
-	return env;
-}
 
 export function getAstroEnv(envMode = ''): Record<`ASTRO_${string}`, string> {
 	const env = loadEnv(envMode, process.cwd(), 'ASTRO_');
 	return env;
 }
 
-export function getRemoteDatabaseUrl(): string {
-	const env = getAstroStudioEnv();
-	return env.ASTRO_STUDIO_REMOTE_DB_URL || 'https://db.services.astro.build';
+export type RemoteDatabaseInfo = {
+	type: 'libsql' | 'studio';
+	url: string;
+};
+
+export function getRemoteDatabaseInfo(): RemoteDatabaseInfo {
+	const astroEnv = getAstroEnv();
+	const studioEnv = getAstroStudioEnv();
+
+	if (studioEnv.ASTRO_STUDIO_REMOTE_DB_URL)
+		return {
+			type: 'studio',
+			url: studioEnv.ASTRO_STUDIO_REMOTE_DB_URL,
+		};
+
+	if (astroEnv.ASTRO_DB_REMOTE_URL)
+		return {
+			type: 'libsql',
+			url: astroEnv.ASTRO_DB_REMOTE_URL,
+		};
+
+	return {
+		type: 'studio',
+		url: 'https://db.services.astro.build',
+	};
 }
 
-export function getAstroStudioUrl(): string {
-	const env = getAstroStudioEnv();
-	return env.ASTRO_STUDIO_URL || 'https://studio.astro.build';
+export function getManagedRemoteToken(
+	token?: string,
+	dbInfo?: RemoteDatabaseInfo,
+): Promise<ManagedAppToken> {
+	dbInfo ??= getRemoteDatabaseInfo();
+
+	if (dbInfo.type === 'studio') {
+		return getManagedAppTokenOrExit(token);
+	}
+
+	const astroEnv = getAstroEnv();
+
+	return Promise.resolve({
+		token: token ?? astroEnv.ASTRO_DB_APP_TOKEN,
+		renew: () => Promise.resolve(),
+		destroy: () => Promise.resolve(),
+	});
 }
 
 export function getDbDirectoryUrl(root: URL | string) {
 	return new URL('db/', root);
 }
 
-export function defineDbIntegration(integration: AstroDbIntegration): AstroIntegration {
+export function defineDbIntegration(integration: AstroIntegration): AstroIntegration {
 	return integration;
 }
 
@@ -40,9 +72,9 @@ export type Result<T> = { success: true; data: T } | { success: false; data: unk
  */
 export function mapObject<T, U = T>(
 	item: Record<string, T>,
-	callback: (key: string, value: T) => U
+	callback: (key: string, value: T) => U,
 ): Record<string, U> {
 	return Object.fromEntries(
-		Object.entries(item).map(([key, value]) => [key, callback(key, value)])
+		Object.entries(item).map(([key, value]) => [key, callback(key, value)]),
 	);
 }
